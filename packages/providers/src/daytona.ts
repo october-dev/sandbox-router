@@ -25,20 +25,35 @@ import {
   type ExecResult,
   type FileEntry,
   type Provider,
+  type ProviderName,
   type Resources,
   type SandboxRef,
   type Size,
   type TaggedSandbox,
 } from './types.ts';
 
-/** Daytona's default snapshots match our sizes (https://www.daytona.io/docs/en/snapshots). */
-const SNAPSHOTS: Record<Size, { name: string; diskGib: number }> = {
-  small: { name: 'daytona-small', diskGib: 3 },
-  medium: { name: 'daytona-medium', diskGib: 8 },
-  large: { name: 'daytona-large', diskGib: 10 },
+/** `container` is Daytona's default sandbox; `linux-vm` is a microVM with its own kernel. */
+export type DaytonaSandboxClass = 'container' | 'linux-vm';
+
+/**
+ * Daytona's default snapshots match our sizes (https://www.daytona.io/docs/en/snapshots).
+ * The sandbox class belongs to the snapshot, so a VM is requested by creating from a VM snapshot.
+ */
+const SNAPSHOTS: Record<DaytonaSandboxClass, Record<Size, { name: string; diskGib: number }>> = {
+  container: {
+    small: { name: 'daytona-small', diskGib: 3 },
+    medium: { name: 'daytona-medium', diskGib: 8 },
+    large: { name: 'daytona-large', diskGib: 10 },
+  },
+  'linux-vm': {
+    small: { name: 'daytona-vm-small', diskGib: 3 },
+    medium: { name: 'daytona-vm-medium', diskGib: 8 },
+    large: { name: 'daytona-vm-large', diskGib: 10 },
+  },
 };
 
 // https://www.daytona.io/pricing: $0.0504/vCPU-h, $0.0162/GiB-h, $0.000108/GiB-h disk after 5 GiB.
+// No separate Linux VM price is listed, so VMs use the same rates (confirm on the first invoice).
 const PRICES: PriceSheet = {
   cpuPerHour: 50_400,
   memoryGibPerHour: 16_200,
@@ -73,12 +88,19 @@ export interface DaytonaConfig {
   apiKey: string;
   /** Region, e.g. "us" or "eu". The organization default is used when omitted. */
   target?: string;
+  /** Defaults to `container` (provider `daytona`); `linux-vm` is provider `daytona-vm`. */
+  sandboxClass?: DaytonaSandboxClass;
 }
 
 /** What a 404 means depends on the call: the sandbox for control-plane calls, a path for file calls. */
 type NotFoundMeans = 'sandbox' | 'file' | 'other';
 
 export function createDaytonaProvider(config: DaytonaConfig): Provider {
+  const sandboxClass = config.sandboxClass ?? 'container';
+  const name: ProviderName = sandboxClass === 'linux-vm' ? 'daytona-vm' : 'daytona';
+  const snapshots = SNAPSHOTS[sandboxClass];
+  /** Both providers share one Daytona organization, so each only claims its own class of sandbox. */
+  const isOurClass = (sandbox: Sandbox) => (sandbox.sandboxClass === 'linux-vm') === (sandboxClass === 'linux-vm');
   const client = new Daytona({ apiKey: config.apiKey, target: config.target, requestTimeoutMs: 60_000 });
   const cache = new Map<string, { sandbox: Sandbox; at: number }>();
 
@@ -95,10 +117,10 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
     try {
       sandbox = await client.get(providerSandboxId);
     } catch (error) {
-      throw toProviderError(error, 'get sandbox', 'sandbox');
+      throw toProviderError(name, error, 'get sandbox', 'sandbox');
     }
     if (GONE_STATES.has(sandbox.state ?? '')) {
-      throw new ProviderError('daytona', 'sandbox_not_found', `Daytona sandbox ${providerSandboxId} is ${sandbox.state}`);
+      throw new ProviderError(name, 'sandbox_not_found', `Daytona sandbox ${providerSandboxId} is ${sandbox.state}`);
     }
     remember(sandbox);
     return sandbox;
@@ -109,7 +131,7 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
    * against the control plane before it is reported.
    */
   const failOperation = async (providerSandboxId: string, error: unknown, context: string, notFound: NotFoundMeans): Promise<never> => {
-    const mapped = toProviderError(error, context, notFound);
+    const mapped = toProviderError(name, error, context, notFound);
     if (mapped.code === 'file_not_found' || mapped.code === 'rate_limited') throw mapped;
     cache.delete(providerSandboxId);
     await get(providerSandboxId); // throws sandbox_not_found if it is gone
@@ -126,10 +148,11 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
   };
 
   return {
-    name: 'daytona',
+    name,
     maxLifetimeSeconds: MAX_LIFETIME_SECONDS,
+    canExtendTimeout: true,
 
-    resources: (size) => ({ ...SIZE_SPECS[size], diskMib: SNAPSHOTS[size].diskGib * 1024 }),
+    resources: (size) => ({ ...SIZE_SPECS[size], diskMib: snapshots[size].diskGib * 1024 }),
 
     ratePerHourMicros: (resources: Resources) => ratePerHour(PRICES, resources),
 
@@ -138,10 +161,12 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
       try {
         sandbox = await client.create(
           {
-            snapshot: SNAPSHOTS[size].name,
+            snapshot: snapshots[size].name,
             labels: { [SANDBOX_ID_LABEL]: sandboxId },
             // Delete as soon as the sandbox stops, and never stop it for inactivity:
-            // it lives until we kill it or the TTL destroys it.
+            // it lives until we kill it or the TTL destroys it. Ephemeral also matters for VMs:
+            // auto-pause is not allowed on ephemeral sandboxes, so a VM never pauses itself
+            // (non-ephemeral VMs default to pausing after 60 idle minutes).
             ephemeral: true,
             autoStopInterval: 0,
             ttlMinutes: Math.ceil(timeoutSeconds / 60) + TTL_MARGIN_MINUTES,
@@ -157,7 +182,7 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
             () => {},
           );
         }
-        throw toProviderError(error, 'create', 'other');
+        throw toProviderError(name, error, 'create', 'other');
       }
       try {
         const homeDir = (await sandbox.getUserHomeDir()) ?? '/home/daytona';
@@ -172,7 +197,7 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
         };
       } catch (error) {
         await sandbox.delete().catch(() => {});
-        throw toProviderError(error, 'create', 'other');
+        throw toProviderError(name, error, 'create', 'other');
       }
     },
 
@@ -183,7 +208,7 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
         if (GONE_STATES.has(sandbox.state ?? '')) return;
         await sandbox.delete();
       } catch (error) {
-        const mapped = toProviderError(error, 'kill', 'sandbox');
+        const mapped = toProviderError(name, error, 'kill', 'sandbox');
         if (mapped.code !== 'sandbox_not_found') throw mapped;
       }
     },
@@ -195,7 +220,7 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
       try {
         await sandbox.setTtl(minutes);
       } catch (error) {
-        throw toProviderError(error, 'set timeout', 'sandbox');
+        throw toProviderError(name, error, 'set timeout', 'sandbox');
       }
     },
 
@@ -204,12 +229,12 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
       try {
         for await (const sandbox of client.list({ limit: 200 })) {
           const sandboxId = sandbox.labels[SANDBOX_ID_LABEL];
-          if (sandboxId && !GONE_STATES.has(sandbox.state ?? '')) {
+          if (sandboxId && isOurClass(sandbox) && !GONE_STATES.has(sandbox.state ?? '')) {
             result.push({ providerSandboxId: sandbox.id, sandboxId });
           }
         }
       } catch (error) {
-        throw toProviderError(error, 'list', 'other');
+        throw toProviderError(name, error, 'list', 'other');
       }
       return result;
     },
@@ -221,7 +246,7 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
         const state = sandbox.state ?? '';
         return !GONE_STATES.has(state) && !BROKEN_STATES.has(state);
       } catch (error) {
-        const mapped = toProviderError(error, 'get sandbox', 'sandbox');
+        const mapped = toProviderError(name, error, 'get sandbox', 'sandbox');
         if (mapped.code === 'sandbox_not_found') return false;
         throw mapped;
       }
@@ -378,7 +403,7 @@ function joinPath(dir: string, name: string): string {
   return dir.endsWith('/') ? `${dir}${name}` : `${dir}/${name}`;
 }
 
-function toProviderError(error: unknown, context: string, notFound: NotFoundMeans): ProviderError {
+function toProviderError(name: ProviderName, error: unknown, context: string, notFound: NotFoundMeans): ProviderError {
   if (error instanceof ProviderError) return error;
   const message = `Daytona ${context} failed: ${errorMessage(error)}`;
   const code = ((): ProviderErrorCode => {
@@ -406,5 +431,5 @@ function toProviderError(error: unknown, context: string, notFound: NotFoundMean
     }
     return 'unknown';
   })();
-  return new ProviderError('daytona', code, message, { cause: error });
+  return new ProviderError(name, code, message, { cause: error });
 }

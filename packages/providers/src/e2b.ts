@@ -83,6 +83,7 @@ export function createE2BProvider(config: E2BConfig): Provider {
   return {
     name: 'e2b',
     maxLifetimeSeconds: config.maxLifetimeSeconds,
+    canExtendTimeout: true,
 
     resources: (size) => ({ ...SIZE_SPECS[size], diskMib: null }),
 

@@ -49,6 +49,7 @@ export interface FakeSandbox {
 export class FakeProvider implements Provider {
   readonly name: ProviderName;
   maxLifetimeSeconds = 24 * 3600;
+  canExtendTimeout = true;
   cpuRate: number;
   createDelayMs = 0;
   /** Delays for setTimeout and kill calls, to simulate slow provider round trips. */

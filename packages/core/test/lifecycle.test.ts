@@ -208,3 +208,21 @@ describe('maintenance', () => {
     expect((await service.get(account, sandbox.id)).status).toBe('running');
   });
 });
+
+describe('providers that cannot extend a deadline', () => {
+  it('allows shortening but refuses extending, without calling the provider', async () => {
+    const account = await createAccount();
+    cheap.canExtendTimeout = false;
+    pricey.canExtendTimeout = false;
+    const sandbox = await service.create(account, { ...base, timeoutSeconds: 1800 });
+    const providerDeadline = cheap.sandboxes.get(sandbox.providerSandboxId!)!.expiresAt;
+
+    const shortened = await service.setTimeout(account, sandbox.id, 600);
+    expect(shortened.expiresAt.getTime()).toBeLessThan(sandbox.expiresAt.getTime());
+    expect(cheap.sandboxes.get(sandbox.providerSandboxId!)!.expiresAt).toEqual(providerDeadline);
+
+    const error = await expectAppError(service.setTimeout(account, sandbox.id, 1200), 'bad_request');
+    expect(error.message).toContain("can't be extended");
+    expect((await service.get(account, sandbox.id)).expiresAt).toEqual(shortened.expiresAt);
+  });
+});

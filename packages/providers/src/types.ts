@@ -8,7 +8,7 @@ export const SIZE_SPECS: Record<Size, { cpu: number; memoryMib: number }> = {
   large: { cpu: 4, memoryMib: 8192 },
 };
 
-export const PROVIDER_NAMES = ['e2b', 'daytona'] as const;
+export const PROVIDER_NAMES = ['e2b', 'daytona', 'daytona-vm', 'novita', 'modal-gvisor', 'modal-vm', 'vercel', 'boat'] as const;
 export type ProviderName = (typeof PROVIDER_NAMES)[number];
 
 /** Label put on every provider sandbox so it can be traced back to our sandbox id. */
@@ -81,6 +81,12 @@ export interface Provider {
   readonly name: ProviderName;
   /** Longest a sandbox may live on this provider, counted from creation. */
   readonly maxLifetimeSeconds: number;
+  /**
+   * False when the provider can't move a sandbox's deadline later after creation.
+   * Such sandboxes can still be shortened (we kill them at the new deadline ourselves),
+   * but never extended past the deadline they currently have.
+   */
+  readonly canExtendTimeout: boolean;
   /** Resources a sandbox of this size gets on this provider. */
   resources(size: Size): Resources;
   /** List price per hour, in micro-USD, for a sandbox with these resources. */

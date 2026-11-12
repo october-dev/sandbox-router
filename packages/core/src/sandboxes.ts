@@ -319,17 +319,27 @@ export function createSandboxService({ db, providers, billing, maxRunningPerAcco
         if (!current || current.status !== 'running' || current.expiresAt.getTime() <= Date.now()) {
           throw new AppError('sandbox_not_running', `Sandbox ${sandboxId} has ended`);
         }
+        if (!provider.canExtendTimeout && expiresAt.getTime() > current.expiresAt.getTime()) {
+          throw new AppError(
+            'bad_request',
+            `Sandboxes on ${provider.name} can't be extended after creation; this one can be shortened, or run until ${current.expiresAt.toISOString()}. Create it with a longer timeout instead.`,
+          );
+        }
         const hold = costMicros(current.ratePerHourMicros, expiresAt.getTime() - current.billingStartedAt!.getTime());
         const increase = hold - current.holdMicros;
         if (increase > 0) {
           const available = await billing.availableMicros(tx, accountId, { lock: false });
           if (available < increase) throw insufficient(increase, available);
         }
-        try {
-          await provider.setTimeout({ providerSandboxId: current.providerSandboxId!, expiresAt });
-        } catch (error) {
-          providerFailure = { error };
-          throw error;
+        // A provider that can't move its deadline keeps the original one; the worker kills the
+        // sandbox at our (earlier) deadline instead.
+        if (provider.canExtendTimeout) {
+          try {
+            await provider.setTimeout({ providerSandboxId: current.providerSandboxId!, expiresAt });
+          } catch (error) {
+            providerFailure = { error };
+            throw error;
+          }
         }
         if (increase > 0) {
           // The account is locked only now, briefly, so creates aren't held up by the provider call.

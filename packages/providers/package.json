@@ -8,10 +8,15 @@
   "scripts": {
     "typecheck": "tsc -p .",
     "build:e2b-templates": "node scripts/build-e2b-templates.ts",
-    "smoke": "node --env-file-if-exists=../../.env scripts/smoke.ts"
+    "smoke": "node --env-file-if-exists=../../.env scripts/smoke.ts",
+    "build:novita-templates": "node scripts/build-novita-templates.ts"
   },
   "dependencies": {
+    "@boatdev/sdk": "1.13.0",
     "@daytona/sdk": "0.227.3",
-    "e2b": "2.62.0"
+    "@vercel/sandbox": "3.9.1",
+    "e2b": "2.62.0",
+    "modal": "0.11.1",
+    "novita-sandbox": "2.1.3"
   }
 }

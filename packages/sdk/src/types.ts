@@ -1,6 +1,6 @@
 export type Size = 'small' | 'medium' | 'large';
 export type Preset = 'cheap' | 'fast';
-export type ProviderName = 'e2b' | 'daytona';
+export type ProviderName = 'e2b' | 'daytona' | 'daytona-vm' | 'novita' | 'modal-gvisor' | 'modal-vm' | 'vercel' | 'boat';
 export type SandboxStatus = 'creating' | 'running' | 'ended' | 'failed';
 export type EndReason = 'killed' | 'expired' | 'lost' | 'create_failed';
 
