@@ -1,0 +1,30 @@
+{
+  "name": "sandbox-router",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.9",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=26.13.0"
+  },
+  "scripts": {
+    "start": "pnpm --filter @sr/server start",
+    "dev": "pnpm --filter @sr/server dev",
+    "typecheck": "pnpm -r --parallel typecheck",
+    "test": "vitest run",
+    "db:generate": "pnpm --filter @sr/db generate",
+    "db:migrate": "pnpm --filter @sr/db migrate"
+  },
+  "devDependencies": {
+    "@sr/core": "workspace:*",
+    "@sr/db": "workspace:*",
+    "@sr/providers": "workspace:*",
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1",
+    "typescript": "~6.0.3",
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
+  }
+}

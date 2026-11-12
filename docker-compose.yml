@@ -1,0 +1,41 @@
+# Self-hosted Sandbox Router with its own Postgres.
+#
+#   export ADMIN_TOKEN=$(openssl rand -hex 32)
+#   export E2B_API_KEY=...        # and/or DAYTONA_API_KEY
+#   docker compose up -d
+#
+# The API listens on http://localhost:8787 (reference at /docs).
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: sandboxrouter
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sandboxrouter"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  sandbox-router:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/sandboxrouter
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?Set ADMIN_TOKEN, e.g. export ADMIN_TOKEN=$(openssl rand -hex 32)}
+      E2B_API_KEY: ${E2B_API_KEY:-}
+      E2B_MAX_LIFETIME_HOURS: ${E2B_MAX_LIFETIME_HOURS:-1}
+      DAYTONA_API_KEY: ${DAYTONA_API_KEY:-}
+      DAYTONA_TARGET: ${DAYTONA_TARGET:-us}
+    ports:
+      # Bound to localhost only. Put a TLS proxy in front before exposing it.
+      - "127.0.0.1:8787:8787"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

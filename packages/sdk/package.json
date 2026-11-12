@@ -1,0 +1,32 @@
+{
+  "name": "sandboxrouter",
+  "version": "0.1.0",
+  "description": "TypeScript client for the Sandbox Router API: one API for cloud sandboxes on E2B and Daytona.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p .",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "eventsource-parser": "^4.1.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/october-dev/sandbox-router.git",
+    "directory": "packages/sdk"
+  }
+}

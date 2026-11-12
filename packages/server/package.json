@@ -1,0 +1,25 @@
+{
+  "name": "@sr/server",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schemas": "./src/schemas.ts"
+  },
+  "scripts": {
+    "start": "node src/self-hosted.ts",
+    "dev": "node --watch --env-file-if-exists=../../.env src/self-hosted.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.6",
+    "@hono/zod-openapi": "^1.6.3",
+    "@scalar/hono-api-reference": "^0.12.17",
+    "@sr/core": "workspace:*",
+    "@sr/db": "workspace:*",
+    "@sr/providers": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.16",
+    "zod": "^4.6.7"
+  }
+}

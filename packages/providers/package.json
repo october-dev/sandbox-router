@@ -1,0 +1,16 @@
+{
+  "name": "@sr/providers",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "build:e2b-templates": "node scripts/build-e2b-templates.ts"
+  },
+  "dependencies": {
+    "@daytona/sdk": "0.227.3",
+    "e2b": "2.62.0"
+  }
+}
