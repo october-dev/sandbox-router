@@ -1,4 +1,26 @@
-# Sandbox Router
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo-light.svg" alt="sandbox-router" width="600">
+  </picture>
+  <br>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/tagline-dark.svg">
+    <img src="assets/tagline-light.svg" alt="One API for every sandbox provider." width="520">
+  </picture>
+</div>
+
+---
+
+<p>
+  <a href="#run-it"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/button-start-dark.svg"><img src="assets/button-start-light.svg" height="40" align="top" alt="Quick start"></picture></a>
+  <a href="#first-steps"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/button-api-dark.svg"><img src="assets/button-api-light.svg" height="40" align="top" alt="API"></picture></a>
+  <a href="packages/sdk"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/button-sdk-dark.svg"><img src="assets/button-sdk-light.svg" height="40" align="top" alt="SDK"></picture></a>
+  <a href="CONTRIBUTING.md"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/button-contribute-dark.svg"><img src="assets/button-contribute-light.svg" height="40" align="top" alt="Contribute"></picture></a>
+  <a href="#run-it"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/callout-dark.svg"><img src="assets/callout-light.svg" height="40" align="top" alt="Self-hosted. Your provider keys never leave your environment."></picture></a>
+</p>
+
+---
 
 **One API for cloud sandboxes on E2B and Daytona.** Ask for a size and say whether you want it `cheap` or `fast`. Sandbox Router picks the best provider, moves on to the next one if creation fails, and tells you what each sandbox costs at the provider's list price.
 

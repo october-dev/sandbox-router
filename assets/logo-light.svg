@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="140" viewBox="0 0 900 140" role="img" aria-label="sandbox-router">
+  <style>
+    .pkt { opacity: 0; animation: hop 1.8s ease-in-out infinite; }
+    @keyframes hop { 0% { opacity: 0; transform: translateX(0); } 10% { opacity: 1; } 30% { opacity: 1; transform: translateX(20px); } 34%,100% { opacity: 0; transform: translateX(20px); } }
+    .screen { animation: glow 1.8s steps(1) infinite; }
+    @keyframes glow { 0%,29% { fill-opacity: 1; } 30%,60% { fill: #10B981; } 61%,100% { fill-opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { .pkt, .screen { animation: none; } }
+  </style>
+  <g shape-rendering="crispEdges">
+    <rect x="20" y="55" width="10" height="10" fill="#10B981"/>
+    <rect x="20" y="65" width="10" height="10" fill="#10B981"/>
+    <rect x="20" y="75" width="10" height="10" fill="#10B981"/>
+    <rect x="30" y="55" width="10" height="10" fill="#10B981"/>
+    <rect x="30" y="65" width="10" height="10" fill="#047857"/>
+    <rect x="30" y="75" width="10" height="10" fill="#10B981"/>
+    <rect x="40" y="55" width="10" height="10" fill="#10B981"/>
+    <rect x="40" y="65" width="10" height="10" fill="#10B981"/>
+    <rect x="40" y="75" width="10" height="10" fill="#10B981"/>
+    <rect x="50" y="65" width="10" height="10" fill="#047857"/>
+    <rect x="60" y="65" width="10" height="10" fill="#047857"/>
+    <rect x="70" y="65" width="10" height="10" fill="#047857"/>
+    <rect x="80" y="25" width="10" height="10" fill="#047857"/>
+    <rect x="80" y="35" width="10" height="10" fill="#047857"/>
+    <rect x="80" y="45" width="10" height="10" fill="#047857"/>
+    <rect x="80" y="55" width="10" height="10" fill="#047857"/>
+    <rect x="80" y="65" width="10" height="10" fill="#047857"/>
+    <rect x="80" y="75" width="10" height="10" fill="#047857"/>
+    <rect x="80" y="85" width="10" height="10" fill="#047857"/>
+    <rect x="80" y="95" width="10" height="10" fill="#047857"/>
+    <rect x="80" y="105" width="10" height="10" fill="#047857"/>
+    <rect x="90" y="25" width="10" height="10" fill="#064E3B"/>
+    <rect x="100" y="25" width="10" height="10" fill="#064E3B"/>
+    <rect x="110" y="25" width="10" height="10" fill="#064E3B"/>
+    <rect x="90" y="65" width="10" height="10" fill="#064E3B"/>
+    <rect x="100" y="65" width="10" height="10" fill="#064E3B"/>
+    <rect x="110" y="65" width="10" height="10" fill="#064E3B"/>
+    <rect x="90" y="105" width="10" height="10" fill="#064E3B"/>
+    <rect x="100" y="105" width="10" height="10" fill="#064E3B"/>
+    <rect x="110" y="105" width="10" height="10" fill="#064E3B"/>
+    <rect x="120" y="15" width="10" height="10" fill="#10B981"/>
+    <rect x="120" y="35" width="10" height="10" fill="#10B981"/>
+    <rect x="130" y="15" width="10" height="10" fill="#10B981"/>
+    <rect x="130" y="35" width="10" height="10" fill="#10B981"/>
+    <rect x="140" y="15" width="10" height="10" fill="#10B981"/>
+    <rect x="140" y="35" width="10" height="10" fill="#10B981"/>
+    <rect x="150" y="15" width="10" height="10" fill="#10B981"/>
+    <rect x="150" y="35" width="10" height="10" fill="#10B981"/>
+    <rect x="160" y="15" width="10" height="10" fill="#10B981"/>
+    <rect x="160" y="35" width="10" height="10" fill="#10B981"/>
+    <rect x="120" y="25" width="10" height="10" fill="#10B981"/>
+    <rect x="160" y="25" width="10" height="10" fill="#10B981"/>
+    <rect class="screen" style="animation-delay:0.0s" x="130" y="25" width="10" height="10" fill="#D1FAE5"/>
+    <rect class="screen" style="animation-delay:0.0s" x="140" y="25" width="10" height="10" fill="#D1FAE5"/>
+    <rect class="screen" style="animation-delay:0.0s" x="150" y="25" width="10" height="10" fill="#D1FAE5"/>
+    <rect x="120" y="55" width="10" height="10" fill="#10B981"/>
+    <rect x="120" y="75" width="10" height="10" fill="#10B981"/>
+    <rect x="130" y="55" width="10" height="10" fill="#10B981"/>
+    <rect x="130" y="75" width="10" height="10" fill="#10B981"/>
+    <rect x="140" y="55" width="10" height="10" fill="#10B981"/>
+    <rect x="140" y="75" width="10" height="10" fill="#10B981"/>
+    <rect x="150" y="55" width="10" height="10" fill="#10B981"/>
+    <rect x="150" y="75" width="10" height="10" fill="#10B981"/>
+    <rect x="160" y="55" width="10" height="10" fill="#10B981"/>
+    <rect x="160" y="75" width="10" height="10" fill="#10B981"/>
+    <rect x="120" y="65" width="10" height="10" fill="#10B981"/>
+    <rect x="160" y="65" width="10" height="10" fill="#10B981"/>
+    <rect class="screen" style="animation-delay:0.6s" x="130" y="65" width="10" height="10" fill="#D1FAE5"/>
+    <rect class="screen" style="animation-delay:0.6s" x="140" y="65" width="10" height="10" fill="#D1FAE5"/>
+    <rect class="screen" style="animation-delay:0.6s" x="150" y="65" width="10" height="10" fill="#D1FAE5"/>
+    <rect x="120" y="95" width="10" height="10" fill="#10B981"/>
+    <rect x="120" y="115" width="10" height="10" fill="#10B981"/>
+    <rect x="130" y="95" width="10" height="10" fill="#10B981"/>
+    <rect x="130" y="115" width="10" height="10" fill="#10B981"/>
+    <rect x="140" y="95" width="10" height="10" fill="#10B981"/>
+    <rect x="140" y="115" width="10" height="10" fill="#10B981"/>
+    <rect x="150" y="95" width="10" height="10" fill="#10B981"/>
+    <rect x="150" y="115" width="10" height="10" fill="#10B981"/>
+    <rect x="160" y="95" width="10" height="10" fill="#10B981"/>
+    <rect x="160" y="115" width="10" height="10" fill="#10B981"/>
+    <rect x="120" y="105" width="10" height="10" fill="#10B981"/>
+    <rect x="160" y="105" width="10" height="10" fill="#10B981"/>
+    <rect class="screen" style="animation-delay:1.2s" x="130" y="105" width="10" height="10" fill="#D1FAE5"/>
+    <rect class="screen" style="animation-delay:1.2s" x="140" y="105" width="10" height="10" fill="#D1FAE5"/>
+    <rect class="screen" style="animation-delay:1.2s" x="150" y="105" width="10" height="10" fill="#D1FAE5"/>
+    <rect class="pkt" style="animation-delay:0.0s" x="90" y="25" width="10" height="10" fill="#10B981"/>
+    <rect class="pkt" style="animation-delay:0.6s" x="90" y="65" width="10" height="10" fill="#10B981"/>
+    <rect class="pkt" style="animation-delay:1.2s" x="90" y="105" width="10" height="10" fill="#10B981"/>
+  </g>
+  <text x="200" y="100" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="80" font-weight="800" letter-spacing="-3" fill="#111111">sandbox-router</text>
+</svg>

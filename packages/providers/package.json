@@ -7,7 +7,8 @@
   },
   "scripts": {
     "typecheck": "tsc -p .",
-    "build:e2b-templates": "node scripts/build-e2b-templates.ts"
+    "build:e2b-templates": "node scripts/build-e2b-templates.ts",
+    "smoke": "node --env-file-if-exists=../../.env scripts/smoke.ts"
   },
   "dependencies": {
     "@daytona/sdk": "0.227.3",
