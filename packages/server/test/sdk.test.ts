@@ -86,4 +86,17 @@ describe('SDK against the API', () => {
     const providers = await client.providers();
     expect(providers[0]).toMatchObject({ name: 'e2b', sizes: expect.any(Array) });
   });
+
+  it('has no default server, so a key is never sent anywhere unchosen', () => {
+    const saved = process.env.SANDBOXROUTER_BASE_URL;
+    delete process.env.SANDBOXROUTER_BASE_URL;
+    try {
+      expect(() => new SandboxRouter({ apiKey: 'sr_test' })).toThrow(/baseUrl/);
+      process.env.SANDBOXROUTER_BASE_URL = 'http://from-env.test/';
+      expect(() => new SandboxRouter({ apiKey: 'sr_test' })).not.toThrow();
+    } finally {
+      if (saved === undefined) delete process.env.SANDBOXROUTER_BASE_URL;
+      else process.env.SANDBOXROUTER_BASE_URL = saved;
+    }
+  });
 });

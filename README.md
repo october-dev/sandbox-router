@@ -2,7 +2,7 @@
 
 **One API for cloud sandboxes on E2B and Daytona.** Ask for a size and say whether you want it `cheap` or `fast`. Sandbox Router picks the best provider, moves on to the next one if creation fails, and tells you what each sandbox costs at the provider's list price.
 
-Run it yourself with your own provider keys, or use [Sandbox Router Cloud](https://sandboxrouter.com) and skip the setup.
+You run it yourself, with your own provider keys. They never leave your environment.
 
 ```ts
 import { SandboxRouter } from "sandboxrouter"
@@ -25,6 +25,15 @@ await sandbox.kill()
 ## Run it
 
 You need Postgres, and an API key for at least one of [E2B](https://e2b.dev) or [Daytona](https://daytona.io).
+
+**Using E2B?** Build its templates once first. E2B sets CPU and memory per template, so Sandbox Router needs one template per size (`sandboxrouter-small`, `-medium`, `-large`) in your E2B team:
+
+```bash
+pnpm install
+E2B_API_KEY=... pnpm --filter @sr/providers build:e2b-templates
+```
+
+Daytona needs no setup.
 
 **With Docker Compose** (includes Postgres):
 
@@ -100,12 +109,12 @@ packages/providers  E2B and Daytona behind one interface
 packages/core       routing, failover, the sandbox lifecycle, API keys
 packages/db         Postgres schema and migrations (Drizzle)
 packages/server     the HTTP API, auth, the background worker, and the self-hosted entry point
-packages/sdk        the TypeScript SDK (`sandboxrouter` on npm)
+packages/sdk        the TypeScript SDK (`sandboxrouter`; not on npm yet)
 ```
 
 Node 26 runs the TypeScript directly, so there is no build step. Keep the code to erasable syntax: no enums, no parameter properties, and `.ts` extensions in relative imports.
 
-`packages/core` takes a `Billing` implementation. The self-hosted server uses `noBilling`, which records each sandbox's cost but never refuses or charges. Sandbox Router Cloud plugs in prepaid billing on top of the same code.
+`packages/core` takes a `Billing` implementation. The self-hosted server uses `noBilling`, which records each sandbox's cost but never refuses or charges. A hosted service can plug in prepaid billing on top of the same code.
 
 ## Development
 
@@ -124,6 +133,8 @@ The `sandboxrouter` CLI is next, built on the SDK.
 ## Security
 
 See [SECURITY.md](SECURITY.md) to report a vulnerability. Your provider keys stay in your own environment.
+
+To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

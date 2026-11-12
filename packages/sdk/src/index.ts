@@ -15,11 +15,14 @@ import type {
 
 export type * from './types.ts';
 
-const DEFAULT_BASE_URL = 'https://api.sandboxrouter.com';
-
 export interface ClientOptions {
   /** Defaults to the SANDBOXROUTER_API_KEY environment variable. */
   apiKey?: string;
+  /**
+   * The server to talk to, e.g. `http://localhost:8787` for a self-hosted one.
+   * Defaults to the SANDBOXROUTER_BASE_URL environment variable. There is no
+   * built-in default, so an API key is never sent anywhere you didn't choose.
+   */
   baseUrl?: string;
   /** Custom fetch, e.g. for proxies or tests. */
   fetch?: typeof fetch;
@@ -51,7 +54,9 @@ class Transport {
     const apiKey = options.apiKey ?? env?.SANDBOXROUTER_API_KEY;
     if (!apiKey) throw new Error('Pass apiKey or set SANDBOXROUTER_API_KEY');
     this.apiKey = apiKey;
-    this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
+    const baseUrl = options.baseUrl ?? env?.SANDBOXROUTER_BASE_URL;
+    if (!baseUrl) throw new Error('Pass baseUrl or set SANDBOXROUTER_BASE_URL, e.g. http://localhost:8787');
+    this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
