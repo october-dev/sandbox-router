@@ -158,7 +158,7 @@ Provider settings, all optional except the keys:
 | `DAYTONA_API_KEY`, `DAYTONA_TARGET`, `DAYTONA_VM` | Region (e.g. `us`); `true` to also offer `daytona-vm` |
 | `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET` | Also `MODAL_ENVIRONMENT`, `MODAL_APP_NAME` (default `sandboxrouter`), `MODAL_IMAGE` (default `python:3.13-slim`), `MODAL_DISABLE_VM=true` for gVisor only |
 | `VERCEL_TOKEN`, `VERCEL_TEAM_ID`, `VERCEL_PROJECT_ID` | Also `VERCEL_MAX_LIFETIME_HOURS` (`0.75` on Hobby, `24` on Pro; default `0.75`), `VERCEL_REGION` |
-| `NOVITA_API_KEY` | Also `NOVITA_MAX_LIFETIME_HOURS` (`1` Free, `3` Paid, `4` Enterprise; default `1`), `NOVITA_DOMAIN` |
+| `NOVITA_API_KEY` | Also `NOVITA_MAX_LIFETIME_HOURS` (`1` Free, `3` Paid, `4` Enterprise; default `1`), `NOVITA_DOMAIN`, and `NOVITA_TEMPLATE_SMALL` / `_MEDIUM` / `_LARGE` for template ids if the built templates' names don't resolve |
 | `BOAT_API_KEY` | Also `BOAT_MAX_LIFETIME_HOURS` (`2` on trial, `720` on paid; default `2`), `BOAT_BASE_URL` |
 
 ## Layout

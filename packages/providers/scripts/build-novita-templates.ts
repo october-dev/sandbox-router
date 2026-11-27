@@ -26,7 +26,7 @@ for (const size of SIZES) {
     memoryMB: memoryMib,
     onBuildLogs: defaultBuildLogger(),
   });
-  // If the name isn't usable at create time, pass these ids as NovitaConfig.templates.
-  console.log(`${name}: template id ${info.templateId}`);
+  // If the name doesn't resolve at create time, set NOVITA_TEMPLATE_<SIZE> to this id.
+  console.log(`${name}: template id ${info.templateId} (NOVITA_TEMPLATE_${size.toUpperCase()})`);
 }
 console.log('done');

@@ -45,6 +45,11 @@ describe('providersFromEnv', () => {
     expect(boat?.maxLifetimeSeconds).toBe(2 * 3600);
   });
 
+  it('passes Novita template ids from the environment', () => {
+    const [novita] = providersFromEnv({ NOVITA_API_KEY: 'x', NOVITA_TEMPLATE_LARGE: 'tpl_large' });
+    expect(novita?.name).toBe('novita');
+  });
+
   it('gives every size real resources and a positive price on every provider', () => {
     for (const provider of providersFromEnv(all)) {
       for (const size of SIZES) {

@@ -17,7 +17,8 @@ import type { Provider } from './types.ts';
  * - MODAL_TOKEN_ID and MODAL_TOKEN_SECRET offer `modal-gvisor` and `modal-vm` (MODAL_DISABLE_VM=true
  *   for gVisor only); MODAL_ENVIRONMENT, MODAL_APP_NAME, MODAL_IMAGE (optional)
  * - NOVITA_API_KEY, NOVITA_MAX_LIFETIME_HOURS (1 on Free, 3 on Paid, 4 on Enterprise; defaults to 1),
- *   NOVITA_DOMAIN (optional). Build the size templates first: build:novita-templates
+ *   NOVITA_DOMAIN (optional), NOVITA_TEMPLATE_SMALL / _MEDIUM / _LARGE (optional template ids
+ *   when the default names don't resolve). Build the size templates first: build:novita-templates
  * - BOAT_API_KEY, BOAT_MAX_LIFETIME_HOURS (2 on trial, 720 on paid; defaults to 2), BOAT_BASE_URL (optional)
  * - VERCEL_TOKEN, VERCEL_TEAM_ID, VERCEL_PROJECT_ID (all three), VERCEL_MAX_LIFETIME_HOURS
  *   (0.75 on Hobby, 24 on Pro; defaults to 0.75), VERCEL_REGION (optional, e.g. "iad1")
@@ -53,6 +54,11 @@ export function providersFromEnv(env: NodeJS.ProcessEnv): Provider[] {
         apiKey: env.NOVITA_API_KEY,
         maxLifetimeSeconds: hoursToSeconds(env.NOVITA_MAX_LIFETIME_HOURS, '1', 'NOVITA_MAX_LIFETIME_HOURS'),
         domain: env.NOVITA_DOMAIN || undefined,
+        templates: definedOnly({
+          small: env.NOVITA_TEMPLATE_SMALL?.trim() || undefined,
+          medium: env.NOVITA_TEMPLATE_MEDIUM?.trim() || undefined,
+          large: env.NOVITA_TEMPLATE_LARGE?.trim() || undefined,
+        }),
       }),
     );
   }
@@ -85,6 +91,10 @@ function hoursToSeconds(value: string | undefined, fallback: string, name: strin
   const hours = Number(value?.trim() || fallback);
   if (!Number.isFinite(hours) || hours <= 0) throw new Error(`${name} must be a positive number`);
   return Math.floor(hours * 3600);
+}
+
+function definedOnly<T extends Record<string, string | undefined>>(values: T): Partial<Record<keyof T, string>> {
+  return Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined)) as Partial<Record<keyof T, string>>;
 }
 
 function flag(value: string | undefined): boolean {
