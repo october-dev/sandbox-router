@@ -63,6 +63,8 @@ export class FakeProvider implements Provider {
   readonly killed: string[] = [];
   /** Commands that ended because their signal was aborted. */
   abortedCommands = 0;
+  /** `sleep` commands running right now. */
+  runningCommands = 0;
   private counter = 0;
 
   constructor(name: ProviderName, options: { cpuRate?: number } = {}) {
@@ -124,6 +126,7 @@ export class FakeProvider implements Provider {
         this.abortedCommands++;
         return { exitCode: null, timedOut: false };
       }
+      this.runningCommands++;
       await new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, request.timeoutMs);
         request.signal.addEventListener('abort', () => {
@@ -131,6 +134,7 @@ export class FakeProvider implements Provider {
           resolve();
         });
       });
+      this.runningCommands--;
       if (request.signal.aborted) this.abortedCommands++;
       return { exitCode: null, timedOut: !request.signal.aborted };
     }

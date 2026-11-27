@@ -92,18 +92,25 @@ describe('self-hosted server over HTTP', () => {
     const router = new SandboxRouter({ apiKey: await newKey(), baseUrl: base });
     const sandbox = await router.sandboxes.create();
     const controllers = Array.from({ length: MAX_CONCURRENT_OPERATIONS_PER_ACCOUNT }, () => new AbortController());
-    const streams = controllers.map(async (controller) => {
-      for await (const _ of sandbox.execStream('sleep', { timeout: 30, signal: controller.signal })) {
-        // Nothing until it ends.
-      }
-    }).map((p) => p.catch(() => {}));
-    await expect.poll(async () => {
-      const error = await sandbox.exec('echo over').catch((e: unknown) => e);
-      return (error as { code?: string }).code;
-    }, { timeout: 5_000 }).toBe('limit_exceeded');
-    for (const controller of controllers) controller.abort();
-    await Promise.all(streams);
-    await expect.poll(async () => (await sandbox.exec('echo again').catch(() => null))?.exitCode, { timeout: 5_000 }).toBe(0);
+    const streams = controllers
+      .map(async (controller) => {
+        for await (const _ of sandbox.execStream('sleep', { timeout: 30, signal: controller.signal })) {
+          // Nothing until it ends.
+        }
+      })
+      .map((p) => p.catch(() => {}));
+    try {
+      // Every stream holds a slot once its command is running.
+      await expect.poll(() => provider.runningCommands, { timeout: 15_000 }).toBe(MAX_CONCURRENT_OPERATIONS_PER_ACCOUNT);
+      const over = await sandbox.exec('echo over').catch((e: unknown) => e);
+      expect(over).toMatchObject({ status: 429, code: 'limit_exceeded' });
+    } finally {
+      for (const controller of controllers) controller.abort();
+      await Promise.all(streams);
+    }
+    await expect
+      .poll(async () => (await sandbox.exec('echo again').catch(() => null))?.exitCode, { timeout: 5_000 })
+      .toBe(0);
     await sandbox.kill();
   });
 
@@ -120,6 +127,10 @@ describe('self-hosted server over HTTP', () => {
   it('enforces MAX_RUNNING_SANDBOXES and rejects oversized JSON bodies', async () => {
     const key = await newKey();
     const router = new SandboxRouter({ apiKey: key, baseUrl: base });
+    // Sandboxes left running by an earlier failed test would use up the limit.
+    for (const left of (await router.sandboxes.list({ status: 'running' })).data) {
+      await (await router.sandboxes.get(left.id)).kill();
+    }
     const running = [await router.sandboxes.create(), await router.sandboxes.create()];
     const third = await router.sandboxes.create().catch((e: unknown) => e);
     expect(third).toBeInstanceOf(SandboxRouterError);
