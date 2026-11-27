@@ -9,6 +9,12 @@ export function createDb(connectionString: string, options: { max?: number } = {
     // Fail instead of waiting forever when every connection is busy.
     connectionTimeoutMillis: 10_000,
   });
+  // An idle connection can fail at any time (a database restart, a pooler closing it). The
+  // pool replaces it; without a listener the error would be thrown and crash the process.
+  // Only the message is logged: the error object references the client and its password.
+  pool.on('error', (error: Error & { code?: string }) => {
+    console.error(`database: idle connection failed (${error.code ?? 'no code'}): ${error.message}`);
+  });
   const db = drizzle({ client: pool, schema });
   return { db, pool };
 }
