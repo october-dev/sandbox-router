@@ -34,6 +34,16 @@ jobs:
           npx --yes pnpm@10.34.9 build
           npm pack --dry-run 2>&1 | tee pack.txt
           grep -q 'dist/index.d.ts' pack.txt && grep -q 'LICENSE' pack.txt
+      - name: Build and pack the CLI
+        working-directory: packages/cli
+        run: |
+          npx --yes pnpm@10.34.9 build
+          npx --yes pnpm@10.34.9 pack --pack-destination "$RUNNER_TEMP"
+          tar -xzf "$RUNNER_TEMP"/sandboxrouter-cli-*.tgz -C "$RUNNER_TEMP"
+          ls "$RUNNER_TEMP/package/dist/index.js" "$RUNNER_TEMP/package/README.md" "$RUNNER_TEMP/package/LICENSE"
+          # The workspace dependency on the SDK must become a version range in the published package.
+          node -e "const d = require(process.argv[1]).dependencies.sandboxrouter; if (!/^\^\d/.test(d)) throw new Error(d)" "$RUNNER_TEMP/package/package.json"
+          node dist/index.js --help > /dev/null
 
   docker:
     runs-on: ubuntu-latest

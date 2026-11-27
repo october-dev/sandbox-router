@@ -1,0 +1,51 @@
+{
+  "name": "sandboxrouter-cli",
+  "version": "0.1.0",
+  "description": "Command line for Sandbox Router: create cloud sandboxes on E2B, Daytona, Modal, Vercel Sandbox, Novita and boat, run commands, copy files.",
+  "keywords": [
+    "sandbox",
+    "cli",
+    "code-execution",
+    "e2b",
+    "daytona",
+    "modal",
+    "vercel-sandbox",
+    "novita",
+    "microvm",
+    "ai-agents"
+  ],
+  "homepage": "https://github.com/october-dev/sandbox-router/tree/main/packages/cli#readme",
+  "bugs": {
+    "url": "https://github.com/october-dev/sandbox-router/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/october-dev/sandbox-router.git",
+    "directory": "packages/cli"
+  },
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "sandboxrouter": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "pnpm --filter sandboxrouter build && rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p .",
+    "start": "node --conditions=sandboxrouter-source src/index.ts",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "sandboxrouter": "workspace:^"
+  }
+}

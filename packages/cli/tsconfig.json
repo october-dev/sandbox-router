@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Resolves the SDK to its TypeScript source, so no build is needed to develop or test.
+    "customConditions": ["sandboxrouter-source"]
+  },
+  "include": ["src", "test"]
+}

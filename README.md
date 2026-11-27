@@ -138,6 +138,23 @@ curl -X POST localhost:8787/v1/sandboxes/<id>/exec \
 | `GET /v1/providers` | Providers, prices per size and recent create speed (no key needed) |
 | `GET` / `POST` / `DELETE /v1/api-keys` | Manage API keys (admin token only) |
 
+## Command line
+
+The `sandboxrouter` CLI does the same from a terminal or a script. It isn't on npm yet, so run it from this checkout (after `pnpm install`):
+
+```bash
+alias sandboxrouter="node --conditions=sandboxrouter-source $PWD/packages/cli/src/index.ts"
+
+sandboxrouter login http://localhost:8787        # paste the admin token: it creates an API key and saves that
+id=$(sandboxrouter create --size small --timeout 10m)
+sandboxrouter cp -r ./app $id:app
+sandboxrouter exec $id 'cd app && npm install && npm test'   # streams output, exits with the command's status
+sandboxrouter url $id 3000
+sandboxrouter kill $id
+```
+
+It also has `list`, `get`, `timeout`, `providers` and `status`, `--json` on every command, and reads `SANDBOXROUTER_BASE_URL` and `SANDBOXROUTER_API_KEY` in CI. See [packages/cli](packages/cli) for everything.
+
 ## Settings
 
 | Variable | |
@@ -169,9 +186,10 @@ packages/core       routing, failover, the sandbox lifecycle, API keys
 packages/db         Postgres schema and migrations (Drizzle)
 packages/server     the HTTP API, auth, the background worker, and the self-hosted entry point
 packages/sdk        the TypeScript SDK (`sandboxrouter`; not on npm yet)
+packages/cli        the command line, built on the SDK (`sandboxrouter-cli`; not on npm yet)
 ```
 
-Node 26 runs the TypeScript directly, so there is no build step (only the SDK is compiled, for npm). Keep the code to erasable syntax: no enums, no parameter properties, and `.ts` extensions in relative imports.
+Node 26 runs the TypeScript directly, so there is no build step (only the SDK and CLI are compiled, for npm). Keep the code to erasable syntax: no enums, no parameter properties, and `.ts` extensions in relative imports.
 
 `packages/core` takes a `Billing` implementation. The self-hosted server uses `noBilling`, which records each sandbox's cost but never refuses or charges. A hosted service can plug in prepaid billing on top of the same code.
 
@@ -186,8 +204,6 @@ pnpm test        # needs Postgres; TEST_DATABASE_URL defaults to postgres://post
 The tests use a real Postgres database and an in-memory provider, so they never call a real provider. `pnpm --filter @sr/providers smoke <provider>` checks one against a live account.
 
 After changing the schema, run `pnpm db:generate` and commit the new migration in `packages/db/migrations`.
-
-The `sandboxrouter` CLI is next, built on the SDK.
 
 ## Security
 
