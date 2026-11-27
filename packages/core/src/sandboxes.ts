@@ -17,7 +17,7 @@ import {
   type SandboxRef,
   type Size,
 } from '@sr/providers';
-import { and, desc, eq, inArray, lt, lte, sql } from 'drizzle-orm';
+import { type SQL, and, desc, eq, inArray, lt, lte, sql } from 'drizzle-orm';
 import type { Billing } from './billing.ts';
 import { AppError } from './errors.ts';
 import { newSandboxId } from './ids.ts';
@@ -49,6 +49,10 @@ export interface Deps {
   maxRunningPerAccount?: number;
   /** Longest one create attempt may take before failing over. Defaults to CREATE_ATTEMPT_TIMEOUT_MS. */
   createAttemptTimeoutMs?: number;
+  /** Row lock wait for ordinary transactions. Defaults to LOCK_TIMEOUT_MS. */
+  lockTimeoutMs?: number;
+  /** Longest a provider may take to move a deadline. Defaults to SET_TIMEOUT_PROVIDER_TIMEOUT_MS. */
+  setTimeoutProviderTimeoutMs?: number;
 }
 
 /*
@@ -59,7 +63,9 @@ export interface Deps {
  * Every transaction that takes row locks sets a lock timeout, so a stuck lock
  * surfaces as an error instead of a hang.
  */
-const LOCK_TIMEOUT = sql`set local lock_timeout = '10s'`;
+/** How long a transaction waits for a row lock before failing, unless it says otherwise. */
+export const LOCK_TIMEOUT_MS = 10_000;
+const lockTimeout = (ms: number) => sql.raw(`set local lock_timeout = '${Math.max(1, Math.round(ms))}ms'`);
 
 /**
  * Longest the worker waits on one provider call. The worker's tasks never overlap with
@@ -101,7 +107,21 @@ export function createSandboxService({
   billing,
   maxRunningPerAccount = MAX_RUNNING_PER_ACCOUNT,
   createAttemptTimeoutMs = CREATE_ATTEMPT_TIMEOUT_MS,
+  lockTimeoutMs = LOCK_TIMEOUT_MS,
+  setTimeoutProviderTimeoutMs = SET_TIMEOUT_PROVIDER_TIMEOUT_MS,
 }: Deps) {
+  const LOCK_TIMEOUT = lockTimeout(lockTimeoutMs);
+  /**
+   * A timeout change holds the sandbox row across up to two provider calls (moving the
+   * deadline, and restoring it if funds ran out meanwhile) plus an account lock. Settling a
+   * kill waits that long, so a kill that has already happened on the provider is recorded.
+   */
+  const KILL_SETTLE_LOCK_TIMEOUT = lockTimeout(2 * setTimeoutProviderTimeoutMs + 2 * lockTimeoutMs);
+  /**
+   * A create tries each provider for at most createAttemptTimeoutMs, so it can only still be
+   * running after this long if its process died; only then is a `creating` row stuck.
+   */
+  const stuckCreateMs = Math.max(10 * 60_000, providers.length * createAttemptTimeoutMs + 2 * 60_000);
   const findProvider = (name: string | null): Provider | undefined => providers.find((p) => p.name === name);
 
   /** Locks the account row, which serializes reservations, and counts its live sandboxes. */
@@ -344,6 +364,8 @@ export function createSandboxService({
     }
     if (row.status !== 'running') return row;
     const provider = findProvider(row.provider);
+    // Billing stops when the kill was asked for, however long recording it takes.
+    const endedAt = new Date();
     if (provider) {
       try {
         await provider.kill(row.providerSandboxId!);
@@ -353,7 +375,9 @@ export function createSandboxService({
     } else {
       console.warn(`provider ${row.provider} is not configured; ending ${row.id} without killing it there`);
     }
-    await settle(row.id, new Date(), 'killed');
+    // The sandbox is gone on the provider now, so wait out a timeout change in progress
+    // rather than leave the row running (and billing) until reconcile notices.
+    await settleWaiting(row.id, endedAt, 'killed', KILL_SETTLE_LOCK_TIMEOUT);
     return get(accountId, sandboxId);
   }
 
@@ -416,7 +440,7 @@ export function createSandboxService({
             await withTimeout(
               provider.setTimeout({ providerSandboxId: current.providerSandboxId!, expiresAt }),
               `${provider.name} set timeout`,
-              SET_TIMEOUT_PROVIDER_TIMEOUT_MS,
+              setTimeoutProviderTimeoutMs,
             );
           } catch (error) {
             providerFailure = { error };
@@ -429,9 +453,11 @@ export function createSandboxService({
           const available = await billing.availableMicros(tx, accountId, { lock: true });
           if (available < increase) {
             // Funds were spent while the provider call ran: restore the provider deadline.
-            await provider
-              .setTimeout({ providerSandboxId: current.providerSandboxId!, expiresAt: current.expiresAt })
-              .catch((e) => console.error(`restoring the deadline of ${sandboxId} failed:`, e));
+            await withTimeout(
+              provider.setTimeout({ providerSandboxId: current.providerSandboxId!, expiresAt: current.expiresAt }),
+              `${provider.name} restore timeout`,
+              setTimeoutProviderTimeoutMs,
+            ).catch((e) => console.error(`restoring the deadline of ${sandboxId} failed:`, e));
             throw insufficient(increase, available);
           }
         }
@@ -462,8 +488,12 @@ export function createSandboxService({
    * min(endedAt, expiresAt), releases the hold, and marks it ended. Idempotent.
    */
   async function settle(sandboxId: string, endedAt: Date, reason: EndReason): Promise<void> {
+    await settleWaiting(sandboxId, endedAt, reason, LOCK_TIMEOUT);
+  }
+
+  async function settleWaiting(sandboxId: string, endedAt: Date, reason: EndReason, lockWait: SQL): Promise<void> {
     await db.transaction(async (tx) => {
-      await tx.execute(LOCK_TIMEOUT);
+      await tx.execute(lockWait);
       const [row] = await tx.select().from(sandboxes).where(eq(sandboxes.id, sandboxId)).for('update');
       if (row?.status === 'running') await settleLocked(tx, row, endedAt, reason);
     });
@@ -516,7 +546,7 @@ export function createSandboxService({
   }
 
   /** Fails creates that never finished (e.g. the API process died mid-create). */
-  async function failStuckCreates(olderThanMs = 10 * 60_000): Promise<number> {
+  async function failStuckCreates(olderThanMs = stuckCreateMs): Promise<number> {
     const failed = await db
       .update(sandboxes)
       .set({ status: 'failed', holdMicros: 0, endedAt: new Date(), endReason: 'create_failed', costMicros: 0 })
