@@ -57,6 +57,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (dir) rmSync(dir, { recursive: true, force: true });
   await server?.close();
   await closeTestDb();
 });
