@@ -5,7 +5,12 @@ sandboxes on E2B, Daytona, Modal, Vercel Sandbox, Novita and boat. You point it 
 for example one you [run yourself](https://github.com/october-dev/sandbox-router#run-it). The server holds
 the provider keys and picks the provider.
 
-> Not on npm yet. Until it is, use it from this repository (`packages/sdk`).
+> Not on npm yet. Until it is, build a package from a checkout of the repository and install that:
+>
+> ```bash
+> pnpm install && pnpm --filter sandboxrouter build && (cd packages/sdk && pnpm pack)
+> cd ~/your-project && npm install /path/to/sandbox-router/packages/sdk/sandboxrouter-0.1.0.tgz
+> ```
 
 ```ts
 import { SandboxRouter } from "sandboxrouter"

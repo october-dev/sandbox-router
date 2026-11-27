@@ -156,7 +156,7 @@ curl -X POST localhost:8787/v1/sandboxes/<id>/exec \
 
 ## Command line
 
-The `sandboxrouter` CLI does the same from a terminal or a script. It isn't on npm yet, so run it from this checkout (after `pnpm install`):
+The `sandboxrouter` CLI does the same from a terminal or a script. It isn't on npm yet: run it from this checkout as below (after `pnpm install`), or install it globally as described in [packages/cli](packages/cli).
 
 ```bash
 alias sandboxrouter="node --conditions=sandboxrouter-source $PWD/packages/cli/src/index.ts"

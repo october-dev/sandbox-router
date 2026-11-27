@@ -12,10 +12,18 @@ sandboxrouter exec $id 'cd app && npm install && npm test'
 sandboxrouter kill $id
 ```
 
-It isn't on npm yet. To run it from a checkout of the repository (Node 26 runs the TypeScript source directly):
+It isn't on npm yet. Until it is, install it from a checkout of the repository:
 
 ```bash
 pnpm install
+pnpm --filter sandboxrouter-cli build                 # builds the SDK too
+(cd packages/sdk && pnpm pack) && (cd packages/cli && pnpm pack)
+npm install -g packages/sdk/sandboxrouter-0.1.0.tgz packages/cli/sandboxrouter-cli-0.1.0.tgz
+```
+
+or run it from source without building (Node 26 runs the TypeScript directly):
+
+```bash
 alias sandboxrouter="node --conditions=sandboxrouter-source $PWD/packages/cli/src/index.ts"
 ```
 
