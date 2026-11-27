@@ -1,2 +1,6 @@
 packages:
   - packages/*
+
+# Security fixes in transitive dependencies (same major version).
+overrides:
+  "zod@<4.6.6": "^4.6.7"
