@@ -56,8 +56,9 @@ Sizes: `small` (1 vCPU, 1 GiB), `medium` (2 vCPU, 4 GiB), `large` (4 vCPU, 8 GiB
 exact match, the sandbox gets the nearest larger machine, and `sandbox.data` reports what it actually got.
 
 Errors are thrown as `SandboxRouterError`, with the HTTP `status` and a stable `code` such as
-`bad_request`, `unauthorized`, `forbidden`, `not_found`, `limit_exceeded`, `sandbox_not_running`, `conflict`,
-`file_not_found`, `payload_too_large`, `no_provider` or `provider_error`. A command stream that drops before
+`bad_request`, `unauthorized`, `forbidden`, `not_found`, `limit_exceeded`, `rate_limited`, `sandbox_not_running`,
+`conflict`, `file_not_found`, `payload_too_large`, `insufficient_funds` (servers with billing), `no_provider`,
+`provider_error` or `internal_error`. A command stream that drops before
 the command exits throws with code `stream_closed`.
 
 `exec` with a `timeout` over 240 seconds runs over a stream under the hood, since Node's `fetch` stops

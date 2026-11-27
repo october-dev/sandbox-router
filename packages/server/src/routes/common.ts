@@ -14,8 +14,14 @@ export const errors = {
 
 export const sandboxErrors = {
   ...errors,
-  409: errorResponse('The sandbox is not running'),
+  409: errorResponse('The sandbox is not running, or is busy with another change'),
   502: errorResponse('The provider failed'),
+} as const;
+
+/** For commands and file transfers, which count against a per-account limit on operations in flight. */
+export const operationErrors = {
+  ...sandboxErrors,
+  429: errorResponse('Too many commands and file transfers in flight for this account'),
 } as const;
 
 export const createErrors = {

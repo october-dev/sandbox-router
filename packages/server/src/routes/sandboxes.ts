@@ -22,7 +22,7 @@ import {
   SetTimeoutBody,
   toSandbox,
 } from '../schemas.ts';
-import { createErrors, errors, extendErrors, sandboxErrors, security } from './common.ts';
+import { createErrors, errors, extendErrors, operationErrors, sandboxErrors, security } from './common.ts';
 
 /** Per-stream cap on output returned by a non-streaming exec. */
 const MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
@@ -167,6 +167,7 @@ export function registerSandboxRoutes(app: App, deps: ServerDeps, auth: Middlewa
       path: '/v1/sandboxes/{id}',
       tags: ['Sandboxes'],
       summary: 'Get a sandbox',
+      description: 'Its status, provider, resources, deadline, price and, once it has ended, its cost.',
       security,
       middleware: [auth],
       request: { params: SandboxIdParam },
@@ -229,7 +230,7 @@ export function registerSandboxRoutes(app: App, deps: ServerDeps, auth: Middlewa
           },
         },
         202: json(z.object({ started: z.literal(true) }), 'The background command started'),
-        ...sandboxErrors,
+        ...operationErrors,
       },
     }),
     async (c) => {
@@ -354,10 +355,11 @@ export function registerSandboxRoutes(app: App, deps: ServerDeps, auth: Middlewa
       path: '/v1/sandboxes/{id}/files',
       tags: ['Files'],
       summary: 'List a directory',
+      description: 'Entries directly inside the directory, not recursive.',
       security,
       middleware: [auth, limitOperations],
       request: { params: SandboxIdParam, query: ListFilesQuery },
-      responses: { 200: json(FileList, 'Directory entries'), ...sandboxErrors },
+      responses: { 200: json(FileList, 'Directory entries'), ...operationErrors },
     }),
     async (c) => {
       const { provider, ref, resolvePath, run } = await deps.sandboxes.live(c.get('accountId'), c.req.valid('param').id);
@@ -372,6 +374,7 @@ export function registerSandboxRoutes(app: App, deps: ServerDeps, auth: Middlewa
       path: '/v1/sandboxes/{id}/files/content',
       tags: ['Files'],
       summary: 'Download a file',
+      description: 'Streams the file as raw bytes.',
       security,
       middleware: [auth, limitOperations],
       request: { params: SandboxIdParam, query: PathQuery },
@@ -380,7 +383,7 @@ export function registerSandboxRoutes(app: App, deps: ServerDeps, auth: Middlewa
           description: 'The file contents',
           content: { 'application/octet-stream': { schema: z.string().openapi({ format: 'binary' }) } },
         },
-        ...sandboxErrors,
+        ...operationErrors,
       },
     }),
     async (c) => {
@@ -404,7 +407,7 @@ export function registerSandboxRoutes(app: App, deps: ServerDeps, auth: Middlewa
         query: PathQuery,
         body: { content: { 'application/octet-stream': { schema: z.string().openapi({ format: 'binary' }) } } },
       },
-      responses: { 200: json(z.object({ path: z.string() }), 'The written path'), ...sandboxErrors, 413: errorResponse413 },
+      responses: { 200: json(z.object({ path: z.string() }), 'The written path'), ...operationErrors, 413: errorResponse413 },
     }),
     async (c) => {
       const declared = Number(c.req.header('content-length') ?? 0);
@@ -434,7 +437,7 @@ export function registerSandboxRoutes(app: App, deps: ServerDeps, auth: Middlewa
       security,
       middleware: [auth, limitOperations],
       request: { params: SandboxIdParam, query: PathQuery },
-      responses: { 204: { description: 'Deleted' }, ...sandboxErrors },
+      responses: { 204: { description: 'Deleted' }, ...operationErrors },
     }),
     async (c) => {
       const { provider, ref, resolvePath, run } = await deps.sandboxes.live(c.get('accountId'), c.req.valid('param').id);

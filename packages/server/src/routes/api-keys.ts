@@ -31,6 +31,10 @@ export function registerApiKeyRoutes(app: App, deps: ServerDeps, auth: Auth) {
       path: '/v1/api-keys',
       tags: ['Account'],
       summary: 'Create an API key',
+      description:
+        "A key acts for the whole account: it can see, use and kill every one of the account's sandboxes, " +
+        'including ones created with other keys, but it cannot manage API keys. A self-hosted server has a ' +
+        'single account, so every key on it can control every sandbox.',
       security,
       middleware: [auth, ownerOnly],
       request: { body: { content: { 'application/json': { schema: CreateApiKeyBody } }, required: true } },
