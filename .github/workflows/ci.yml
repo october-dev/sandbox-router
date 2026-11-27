@@ -28,9 +28,34 @@ jobs:
       - run: npx --yes pnpm@10.34.9 install --frozen-lockfile
       - run: npx --yes pnpm@10.34.9 typecheck
       - run: npx --yes pnpm@10.34.9 test
+      - name: Build and pack the SDK
+        working-directory: packages/sdk
+        run: |
+          npx --yes pnpm@10.34.9 build
+          npm pack --dry-run 2>&1 | tee pack.txt
+          grep -q 'dist/index.d.ts' pack.txt && grep -q 'LICENSE' pack.txt
 
   docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t sandbox-router .
+      - name: Start with Docker Compose
+        run: docker compose up -d --build --wait --wait-timeout 120
+        env:
+          ADMIN_TOKEN: ci-admin-token-0123456789abcdef0123456789abcdef
+          # Lets the server start; no sandbox is created, so it is never used.
+          E2B_API_KEY: e2b_not_a_real_key
+      - name: Check the API
+        env:
+          ADMIN_TOKEN: ci-admin-token-0123456789abcdef0123456789abcdef
+        run: |
+          for i in $(seq 1 30); do curl -fsS localhost:8787/healthz && break; sleep 2; done
+          curl -fsS localhost:8787/docs > /dev/null
+          curl -fsS localhost:8787/openapi.json > /dev/null
+          curl -fsS localhost:8787/v1/providers
+          curl -fsS -X POST localhost:8787/v1/api-keys \
+            -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" -d '{"name": "ci"}' > /dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8787/v1/sandboxes)" = 401
+      - name: Logs
+        if: always()
+        run: docker compose logs
