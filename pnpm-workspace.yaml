@@ -1,6 +1,7 @@
 packages:
   - packages/*
 
-# Security fixes in transitive dependencies (same major version).
+# Security fixes in transitive dependencies.
 overrides:
   "zod@<4.6.6": "^4.6.7"
+  "glob@>=9.0.0 <14.0.2": "^14.0.6"
