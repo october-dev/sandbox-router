@@ -18,7 +18,7 @@ import {
 } from '@daytona/sdk';
 import { ProviderError, type ProviderErrorCode, errorMessage } from './errors.ts';
 import { type PriceSheet, ratePerHour } from './pricing.ts';
-import { shellQuote } from './shell.ts';
+import { isEnvName, shellQuote } from './shell.ts';
 import {
   SANDBOX_ID_LABEL,
   SIZE_SPECS,
@@ -147,7 +147,11 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
    * Wrapping in `bash -lc` gives the same login-bash semantics as E2B.
    */
   const wrap = (command: string, cwd: string, env: Record<string, string>) => {
-    const assignments = Object.entries(env).map(([key, value]) => `${key}=${shellQuote(value)}`);
+    const assignments = Object.entries(env).map(([key, value]) => {
+      // The name is spliced into the command line unquoted, so it must be a plain identifier.
+      if (!isEnvName(key)) throw new ProviderError(name, 'invalid_request', `invalid environment variable name: ${key}`);
+      return `${key}=${shellQuote(value)}`;
+    });
     return `cd ${shellQuote(cwd)} && env ${assignments.join(' ')} bash -lc ${shellQuote(command)}`;
   };
 
@@ -259,6 +263,7 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
     async exec(ref, request): Promise<ExecResult> {
       const sandbox = await get(ref.providerSandboxId);
       if (request.signal.aborted) return { exitCode: null, timedOut: false };
+      const command = wrap(request.command, request.cwd, request.env);
       const sessionId = `sr-${randomUUID()}`;
       const deadline = Date.now() + request.timeoutMs;
       let stopped: 'timeout' | 'abort' | null = null;
@@ -300,7 +305,7 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
         if (request.signal.aborted) stop('abort');
         if (stopped) return { exitCode: null, timedOut: stopped === 'timeout' };
         const { cmdId } = await sandbox.process.executeSessionCommand(sessionId, {
-          command: wrap(request.command, request.cwd, request.env),
+          command,
           runAsync: true,
         });
         // Resolves when the command exits and the stream closes, or as soon as we stop.
@@ -345,12 +350,13 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
 
     async startBackground(ref, request) {
       const sandbox = await get(ref.providerSandboxId);
+      const command = wrap(request.command, request.cwd, request.env);
       // The session is left open: deleting it would kill the process.
       const sessionId = `sr-bg-${randomUUID()}`;
       try {
         await sandbox.process.createSession(sessionId);
         await sandbox.process.executeSessionCommand(sessionId, {
-          command: wrap(request.command, request.cwd, request.env),
+          command,
           runAsync: true,
         });
       } catch (error) {

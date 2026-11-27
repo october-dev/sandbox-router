@@ -10,7 +10,7 @@ import {
   type Sandbox,
 } from '@boatdev/sdk';
 import { ProviderError, type ProviderErrorCode, errorMessage } from './errors.ts';
-import { shellQuote } from './shell.ts';
+import { isEnvName, shellQuote } from './shell.ts';
 import {
   SANDBOX_ID_LABEL,
   type CreatedSandbox,
@@ -59,7 +59,6 @@ const URL_ROOTS = ['/home/user', '/tmp'];
 const DOWNLOAD_HEADERS_TIMEOUT_MS = 60_000;
 /** States in which one of our sandboxes is past use: listTagged deletes them (best effort). */
 const DEAD_STATES = new Set(['archived', 'error']);
-const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export interface BoatConfig {
   apiKey: string;
@@ -67,12 +66,15 @@ export interface BoatConfig {
   baseUrl?: string;
   /** 7200 on the trial, 2592000 (30 days) on paid plans (https://docs.boat.dev/limits). */
   maxLifetimeSeconds: number;
+  /** Longest to wait for a signed file URL to answer once a request is sent. Defaults to 60 s. */
+  fileResponseTimeoutMs?: number;
 }
 
 /** What a 404 means depends on the call: the sandbox for control-plane calls, a path for file calls. */
 type NotFoundMeans = 'sandbox' | 'file' | 'other';
 
 export function createBoatProvider(config: BoatConfig): Provider {
+  const fileResponseTimeoutMs = config.fileResponseTimeoutMs ?? DOWNLOAD_HEADERS_TIMEOUT_MS;
   const boat = new BoatApi(
     new Configuration({
       accessToken: config.apiKey,
@@ -119,7 +121,7 @@ export function createBoatProvider(config: BoatConfig): Provider {
   const wrap = (command: string, cwd: string, env: Record<string, string>) => {
     const assignments = Object.entries(env).map(([key, value]) => {
       // The name is spliced into the command line unquoted, so it must be a plain identifier.
-      if (!ENV_NAME.test(key)) throw new ProviderError('boat', 'invalid_request', `invalid environment variable name: ${key}`);
+      if (!isEnvName(key)) throw new ProviderError('boat', 'invalid_request', `invalid environment variable name: ${key}`);
       return `${key}=${shellQuote(value)}`;
     });
     return `cd ${shellQuote(cwd)} && env ${assignments.join(' ')} bash -lc ${shellQuote(command)}`;
@@ -299,6 +301,8 @@ export function createBoatProvider(config: BoatConfig): Provider {
         throw new Error('command output ended without an exit status');
       } catch (error) {
         if (stopped) return { exitCode: null, timedOut: stopped === 'timeout' };
+        // An output callback or the stream failed: don't leave the detached command running.
+        if (processId !== null) void boat.stopCommand({ sandboxId, processId }).catch(() => {});
         return fail(error, 'exec', 'sandbox');
       } finally {
         clearTimeout(timer);
@@ -329,7 +333,7 @@ export function createBoatProvider(config: BoatConfig): Provider {
       try {
         if (staged) await stageWithShell(sh, sandboxId, `cp -- ${shellQuote(path)} ${shellQuote(staged)}`, path);
         const { url } = await boat.createDownloadUrl({ sandboxId, fileUrlRequest: { path: staged ?? path } });
-        const response = await fetchSigned(url, { method: 'GET' }, `download ${path}`, DOWNLOAD_HEADERS_TIMEOUT_MS);
+        const response = await fetchSigned(url, { method: 'GET' }, `download ${path}`, fileResponseTimeoutMs);
         if (!response.ok || !response.body) {
           await response.body?.cancel();
           throw httpError(response.status, `download ${path}`);
@@ -373,8 +377,23 @@ export function createBoatProvider(config: BoatConfig): Provider {
         const { url } = await boat.createUploadUrl({ sandboxId, fileUrlRequest: { path: staged ?? path } });
         // A streamed body is sent chunked. Confirm in the live smoke test that the signed URL
         // accepts uploads without a Content-Length.
-        // No headers timeout: boat answers only once the whole body is uploaded.
-        const response = await fetchSigned(url, { method: 'PUT', body: data, duplex: 'half' } as RequestInit, `upload ${path}`);
+        // boat answers only once the whole body is uploaded, so the wait for an answer starts
+        // when the body ends. The sandbox serves the URL itself and could otherwise hold the
+        // request (and its slot in this process) open forever.
+        const answer = new AbortController();
+        let answerTimer: NodeJS.Timeout | undefined;
+        const body = data.pipeThrough(
+          new TransformStream<Uint8Array, Uint8Array>({
+            flush() {
+              answerTimer = setTimeout(() => answer.abort(new Error('no response from the sandbox')), fileResponseTimeoutMs);
+            },
+          }),
+        );
+        const response = await fetchSigned(
+          url,
+          { method: 'PUT', body, duplex: 'half', signal: answer.signal } as RequestInit,
+          `upload ${path}`,
+        ).finally(() => clearTimeout(answerTimer));
         await response.body?.cancel();
         if (!response.ok) throw httpError(response.status, `upload ${path}`);
         if (staged) {
@@ -491,7 +510,8 @@ async function fetchSigned(url: string, init: RequestInit, context: string, head
       : setTimeout(() => controller.abort(new Error('no response from the sandbox')), headersTimeoutMs);
   try {
     // The signal stays live for the body; the timer only covers the wait for headers.
-    return await fetch(target, { ...init, redirect: 'error', signal: controller.signal });
+    const signal = init.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal;
+    return await fetch(target, { ...init, redirect: 'error', signal });
   } catch (error) {
     throw new ProviderError('boat', 'unavailable', `boat ${context} failed: ${errorMessage(error)}`, { cause: error });
   } finally {

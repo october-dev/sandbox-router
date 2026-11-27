@@ -238,6 +238,9 @@ export function createNovitaProvider(config: NovitaConfig): Provider {
             await started.kill().catch(() => {});
             return { exitCode: null, timedOut: true };
           }
+          // The output stream broke (or an output callback threw): the process may still be
+          // running, with nobody left to read it or stop it at its deadline.
+          await handle.kill().catch(() => {});
           throw error;
         } finally {
           request.signal.removeEventListener('abort', onAbort);
