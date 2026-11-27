@@ -150,6 +150,7 @@ describe('self-hosted server over HTTP', () => {
 describe('self-hosted settings', () => {
   it('rejects a short admin token and treats empty variables as unset', () => {
     expect(() => parseSelfHostedEnv({ DATABASE_URL: 'postgres://x', ADMIN_TOKEN: 'short' })).toThrow(/ADMIN_TOKEN/);
+    expect(() => parseSelfHostedEnv({ DATABASE_URL: 'postgres://x', ADMIN_TOKEN: `sr_${'a'.repeat(40)}` })).toThrow(/sr_/);
     const env = parseSelfHostedEnv({ DATABASE_URL: 'postgres://x', ADMIN_TOKEN: 'a'.repeat(32), PORT: '', MAX_RUNNING_SANDBOXES: '' });
     expect(env).toMatchObject({ PORT: 8787, MAX_RUNNING_SANDBOXES: 10 });
   });

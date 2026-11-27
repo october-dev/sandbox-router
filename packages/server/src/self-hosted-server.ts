@@ -15,7 +15,11 @@ export const OWNER_ACCOUNT_ID = '00000000-0000-4000-8000-000000000001';
 const Env = z.object({
   DATABASE_URL: z.string().min(1),
   /** The owner credential. Generate one with `openssl rand -hex 32`. */
-  ADMIN_TOKEN: z.string().min(32, 'ADMIN_TOKEN must be at least 32 characters; try `openssl rand -hex 32`'),
+  ADMIN_TOKEN: z
+    .string()
+    .min(32, 'ADMIN_TOKEN must be at least 32 characters; try `openssl rand -hex 32`')
+    // Tokens starting with sr_ are checked as API keys, so such an admin token could never sign in.
+    .refine((token) => !token.startsWith('sr_'), 'ADMIN_TOKEN must not start with sr_ (that prefix is for API keys)'),
   PORT: z.coerce.number().int().min(0).max(65535).default(8787),
   /** Bind address. Defaults to all interfaces, as a container needs. */
   HOST: z.string().min(1).optional(),
