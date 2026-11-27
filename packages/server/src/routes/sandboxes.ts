@@ -30,8 +30,72 @@ const MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
 const MAX_QUEUED_STREAM_BYTES = 8 * 1024 * 1024;
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 const HEARTBEAT_MS = 15_000;
+/**
+ * Commands, streams and file transfers one account may have in flight at once. Each holds
+ * output or upload buffers in this process, so an unbounded number could exhaust its memory.
+ */
+export const MAX_CONCURRENT_OPERATIONS_PER_ACCOUNT = 32;
 
 export function registerSandboxRoutes(app: App, deps: ServerDeps, auth: MiddlewareHandler<AppEnv>) {
+  const inFlight = new Map<string, number>();
+  /** Counts the request against its account's limit until the response, including a stream, has finished. */
+  const limitOperations: MiddlewareHandler<AppEnv> = async (c, next) => {
+    const accountId = c.get('accountId');
+    const count = inFlight.get(accountId) ?? 0;
+    if (count >= MAX_CONCURRENT_OPERATIONS_PER_ACCOUNT) {
+      throw new AppError(
+        'limit_exceeded',
+        `At most ${MAX_CONCURRENT_OPERATIONS_PER_ACCOUNT} commands and file transfers can run at once per account`,
+      );
+    }
+    inFlight.set(accountId, count + 1);
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      const left = (inFlight.get(accountId) ?? 1) - 1;
+      if (left > 0) inFlight.set(accountId, left);
+      else inFlight.delete(accountId);
+    };
+    try {
+      await next();
+    } catch (error) {
+      release();
+      throw error;
+    }
+    const body = c.res.body;
+    if (!body) {
+      release();
+      return;
+    }
+    // Hold the slot until the body has been sent or the client went away.
+    c.req.raw.signal.addEventListener('abort', release, { once: true });
+    const reader = body.getReader();
+    const { status, statusText, headers } = c.res;
+    c.res = new Response(
+      new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          try {
+            const { done, value } = await reader.read();
+            if (done) {
+              release();
+              controller.close();
+            } else {
+              controller.enqueue(value);
+            }
+          } catch (error) {
+            release();
+            controller.error(error);
+          }
+        },
+        cancel(reason) {
+          release();
+          return reader.cancel(reason);
+        },
+      }),
+      { status, statusText, headers },
+    );
+  };
   const json = <T extends z.ZodType>(schema: T, description: string) => ({
     description,
     content: { 'application/json': { schema } },
@@ -154,7 +218,7 @@ export function registerSandboxRoutes(app: App, deps: ServerDeps, auth: Middlewa
         'Runs a command and returns its output when it exits. Send `Accept: text/event-stream` to stream output as it is produced instead. ' +
         'Closing the connection kills the command. Output a streaming client reads too slowly (over 8 MiB behind) is dropped, with a notice on stderr.',
       security,
-      middleware: [auth],
+      middleware: [auth, limitOperations],
       request: { params: SandboxIdParam, ...body(ExecBody) },
       responses: {
         200: {
@@ -213,8 +277,10 @@ export function registerSandboxRoutes(app: App, deps: ServerDeps, auth: Middlewa
             return enqueue(payload.length, () => stream.writeSSE({ event, data: payload }));
           };
           const output = (event: 'stdout' | 'stderr') => (chunk: string) => {
-            if (queuedBytes + chunk.length > MAX_QUEUED_STREAM_BYTES) {
-              droppedBytes += chunk.length;
+            // Measured as queued: JSON-encoded, which can be several times the raw chunk.
+            const encoded = JSON.stringify(chunk);
+            if (queuedBytes + encoded.length > MAX_QUEUED_STREAM_BYTES) {
+              droppedBytes += Buffer.byteLength(chunk);
               return;
             }
             if (droppedBytes > 0) {
@@ -223,7 +289,7 @@ export function registerSandboxRoutes(app: App, deps: ServerDeps, auth: Middlewa
               void send('stderr', notice);
             }
             // Returning the write lets providers that wait on callbacks slow the command's output.
-            return send(event, chunk);
+            return enqueue(encoded.length, () => stream.writeSSE({ event, data: encoded }));
           };
           const heartbeat = setInterval(() => {
             void enqueue(0, () => stream.write(': keep-alive\n\n'));
@@ -289,7 +355,7 @@ export function registerSandboxRoutes(app: App, deps: ServerDeps, auth: Middlewa
       tags: ['Files'],
       summary: 'List a directory',
       security,
-      middleware: [auth],
+      middleware: [auth, limitOperations],
       request: { params: SandboxIdParam, query: ListFilesQuery },
       responses: { 200: json(FileList, 'Directory entries'), ...sandboxErrors },
     }),
@@ -307,7 +373,7 @@ export function registerSandboxRoutes(app: App, deps: ServerDeps, auth: Middlewa
       tags: ['Files'],
       summary: 'Download a file',
       security,
-      middleware: [auth],
+      middleware: [auth, limitOperations],
       request: { params: SandboxIdParam, query: PathQuery },
       responses: {
         200: {
@@ -332,7 +398,7 @@ export function registerSandboxRoutes(app: App, deps: ServerDeps, auth: Middlewa
       summary: 'Upload a file',
       description: 'Writes the raw request body to the path, creating parent directories and replacing any existing file. Up to 100 MiB.',
       security,
-      middleware: [auth],
+      middleware: [auth, limitOperations],
       request: {
         params: SandboxIdParam,
         query: PathQuery,
@@ -366,7 +432,7 @@ export function registerSandboxRoutes(app: App, deps: ServerDeps, auth: Middlewa
       summary: 'Delete a file or directory',
       description: 'Directories are removed recursively.',
       security,
-      middleware: [auth],
+      middleware: [auth, limitOperations],
       request: { params: SandboxIdParam, query: PathQuery },
       responses: { 204: { description: 'Deleted' }, ...sandboxErrors },
     }),

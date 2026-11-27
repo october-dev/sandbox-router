@@ -1,5 +1,5 @@
 import { sandboxes } from '@sr/db';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { AppError, costMicros, createSandboxService, noBilling } from '../src/index.ts';
 import { FakeProvider, closeTestDb, createAccount, resetDb, testDb } from '../../../test/helpers.ts';
@@ -66,5 +66,37 @@ describe('noBilling', () => {
         expect((r.reason as AppError).code).toBe('limit_exceeded');
       }
     }
+  });
+});
+
+describe('create and timeout robustness', () => {
+  it('fails over from a provider whose create hangs, and records the attempt as failed', async () => {
+    const slow = new FakeProvider('e2b', { cpuRate: 10_000 });
+    slow.createDelayMs = 1_000;
+    const fast = new FakeProvider('daytona', { cpuRate: 90_000 });
+    const service = createSandboxService({ db, billing: noBilling, providers: [slow, fast], createAttemptTimeoutMs: 100 });
+    const account = await createAccount();
+    const sandbox = await service.create(account, medium(600));
+    expect(sandbox.provider).toBe('daytona');
+    const attempts = await db.execute<{ provider: string; ok: boolean }>(
+      sql`select provider, ok from create_attempts where sandbox_id = ${sandbox.id} order by created_at`,
+    );
+    expect(attempts.rows).toEqual([
+      { provider: 'e2b', ok: false },
+      { provider: 'daytona', ok: true },
+    ]);
+  });
+
+  it('refuses a second timeout change while one is in progress instead of queueing it', async () => {
+    const service = createSandboxService({ db, billing: noBilling, providers: [provider] });
+    const account = await createAccount();
+    const sandbox = await service.create(account, medium(600));
+    provider.setTimeoutDelayMs = 300;
+    const first = service.setTimeout(account, sandbox.id, 1200);
+    await new Promise((r) => setTimeout(r, 50));
+    const second = await service.setTimeout(account, sandbox.id, 1800).catch((e: unknown) => e);
+    expect(second).toBeInstanceOf(AppError);
+    expect(second).toMatchObject({ code: 'conflict', status: 409 });
+    expect((await first).status).toBe('running');
   });
 });

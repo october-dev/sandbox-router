@@ -4,7 +4,22 @@ import { SIZES } from '@sr/providers';
 import type { App, ServerDeps } from '../context.ts';
 import { ProviderList } from '../schemas.ts';
 
+/** The unauthenticated provider list reuses recent placement health for this long. */
+const HEALTH_CACHE_MS = 5_000;
+
 export function registerProviderRoutes(app: App, deps: ServerDeps) {
+  let cached: { at: number; health: Promise<Awaited<ReturnType<typeof loadProviderHealth>>> } | undefined;
+  const health = () => {
+    if (!cached || Date.now() - cached.at > HEALTH_CACHE_MS) {
+      const entry = { at: Date.now(), health: loadProviderHealth(deps.db) };
+      // A failed query is not cached.
+      entry.health.catch(() => {
+        if (cached === entry) cached = undefined;
+      });
+      cached = entry;
+    }
+    return cached.health;
+  };
   const json = <T extends z.ZodType>(schema: T, description: string) => ({
     description,
     content: { 'application/json': { schema } },
@@ -20,11 +35,11 @@ export function registerProviderRoutes(app: App, deps: ServerDeps) {
       responses: { 200: json(ProviderList, 'Providers') },
     }),
     async (c) => {
-      const health = await loadProviderHealth(deps.db);
+      const recent = await health();
       return c.json(
         {
           data: deps.providers.map((provider) => {
-            const h = health.get(provider.name);
+            const h = recent.get(provider.name);
             return {
               name: provider.name,
               maxTimeoutSeconds: provider.maxLifetimeSeconds,

@@ -6,6 +6,7 @@ export type AppErrorCode =
   | 'insufficient_funds'
   | 'limit_exceeded'
   | 'sandbox_not_running'
+  | 'conflict'
   | 'file_not_found'
   | 'payload_too_large'
   | 'no_provider'
@@ -19,6 +20,7 @@ const STATUS: Record<AppErrorCode, number> = {
   insufficient_funds: 402,
   limit_exceeded: 429,
   sandbox_not_running: 409,
+  conflict: 409,
   file_not_found: 404,
   payload_too_large: 413,
   no_provider: 503,

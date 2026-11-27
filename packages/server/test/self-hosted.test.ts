@@ -2,6 +2,7 @@
 // migrations, the owner account, the admin token, the worker and the SDK.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SandboxRouter, SandboxRouterError } from '../../sdk/src/index.ts';
+import { MAX_CONCURRENT_OPERATIONS_PER_ACCOUNT } from '../src/routes/sandboxes.ts';
 import { parseSelfHostedEnv, startSelfHosted, type SelfHostedServer } from '../src/self-hosted-server.ts';
 import { FakeProvider, closeTestDb, resetDb } from '../../../test/helpers.ts';
 
@@ -84,6 +85,35 @@ describe('self-hosted server over HTTP', () => {
     controller.abort();
     await reading;
     await expect.poll(() => provider.abortedCommands, { timeout: 5_000 }).toBe(before + 1);
+    await sandbox.kill();
+  });
+
+  it('limits concurrent commands per account and frees the slots when they end', async () => {
+    const router = new SandboxRouter({ apiKey: await newKey(), baseUrl: base });
+    const sandbox = await router.sandboxes.create();
+    const controllers = Array.from({ length: MAX_CONCURRENT_OPERATIONS_PER_ACCOUNT }, () => new AbortController());
+    const streams = controllers.map(async (controller) => {
+      for await (const _ of sandbox.execStream('sleep', { timeout: 30, signal: controller.signal })) {
+        // Nothing until it ends.
+      }
+    }).map((p) => p.catch(() => {}));
+    await expect.poll(async () => {
+      const error = await sandbox.exec('echo over').catch((e: unknown) => e);
+      return (error as { code?: string }).code;
+    }, { timeout: 5_000 }).toBe('limit_exceeded');
+    for (const controller of controllers) controller.abort();
+    await Promise.all(streams);
+    await expect.poll(async () => (await sandbox.exec('echo again').catch(() => null))?.exitCode, { timeout: 5_000 }).toBe(0);
+    await sandbox.kill();
+  });
+
+  it('runs a long exec over a stream, past the fetch header timeout', async () => {
+    const router = new SandboxRouter({ apiKey: await newKey(), baseUrl: base });
+    const sandbox = await router.sandboxes.create();
+    const result = await sandbox.exec('exit 4', { timeout: 1800 });
+    expect(result).toMatchObject({ exitCode: 4, timedOut: false, truncated: false });
+    expect(result.stdout).toContain('ran: exit 4');
+    expect(result.stderr).toBe('warning\n');
     await sandbox.kill();
   });
 

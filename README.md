@@ -104,6 +104,8 @@ Docker Compose publishes the port on `127.0.0.1` only. To reach the server from 
 
 The admin token is for creating API keys. Use API keys for everything else.
 
+A self-hosted server has one account, and every API key belongs to it: anyone holding a key can see, run commands in and kill every sandbox, including ones created with other keys. Give keys only to people and agents you'd trust with all of them, and revoke a key with `DELETE /v1/api-keys/{id}`.
+
 ```bash
 # Create an API key
 curl -X POST localhost:8787/v1/api-keys \
@@ -146,6 +148,8 @@ curl -X POST localhost:8787/v1/sandboxes/<id>/exec \
 | `HOST` | Address to listen on. Default all interfaces |
 | `MAX_RUNNING_SANDBOXES` | Sandboxes allowed at once, default `10` |
 
+Other limits: up to 32 commands and file transfers in flight at once, 1 MiB JSON request bodies, 100 MiB file uploads, and 10 MiB of output per stream for a command that isn't streamed.
+
 Provider settings, all optional except the keys:
 
 | Variable | |
@@ -167,7 +171,7 @@ packages/server     the HTTP API, auth, the background worker, and the self-host
 packages/sdk        the TypeScript SDK (`sandboxrouter`; not on npm yet)
 ```
 
-Node 26 runs the TypeScript directly, so there is no build step. Keep the code to erasable syntax: no enums, no parameter properties, and `.ts` extensions in relative imports.
+Node 26 runs the TypeScript directly, so there is no build step (only the SDK is compiled, for npm). Keep the code to erasable syntax: no enums, no parameter properties, and `.ts` extensions in relative imports.
 
 `packages/core` takes a `Billing` implementation. The self-hosted server uses `noBilling`, which records each sandbox's cost but never refuses or charges. A hosted service can plug in prepaid billing on top of the same code.
 

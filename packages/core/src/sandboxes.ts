@@ -47,6 +47,8 @@ export interface Deps {
   billing: Billing;
   /** Running sandboxes allowed per account at once. Defaults to MAX_RUNNING_PER_ACCOUNT. */
   maxRunningPerAccount?: number;
+  /** Longest one create attempt may take before failing over. Defaults to CREATE_ATTEMPT_TIMEOUT_MS. */
+  createAttemptTimeoutMs?: number;
 }
 
 /*
@@ -64,6 +66,17 @@ const LOCK_TIMEOUT = sql`set local lock_timeout = '10s'`;
  * themselves, so a provider call that hangs would otherwise stop all settling.
  */
 export const WORKER_PROVIDER_TIMEOUT_MS = 60_000;
+/**
+ * Longest one create attempt may take before the next provider is tried. A late success is
+ * killed by reconcile(), since the sandbox row no longer points at it.
+ */
+export const CREATE_ATTEMPT_TIMEOUT_MS = 150_000;
+/** Longest a provider may take to move a deadline while the sandbox row is locked. */
+export const SET_TIMEOUT_PROVIDER_TIMEOUT_MS = 30_000;
+/** Expired sandboxes settled at once; each holds a database connection while its kill runs. */
+const SETTLE_CONCURRENCY = 4;
+/** Postgres SQLSTATE for a row lock that NOWAIT could not take. */
+const LOCK_NOT_AVAILABLE = '55P03';
 
 function withTimeout<T>(promise: Promise<T>, what: string, ms = WORKER_PROVIDER_TIMEOUT_MS): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
@@ -82,7 +95,13 @@ const FAILURE_LABELS: Record<ProviderErrorCode, string> = {
   unknown: 'failed',
 };
 
-export function createSandboxService({ db, providers, billing, maxRunningPerAccount = MAX_RUNNING_PER_ACCOUNT }: Deps) {
+export function createSandboxService({
+  db,
+  providers,
+  billing,
+  maxRunningPerAccount = MAX_RUNNING_PER_ACCOUNT,
+  createAttemptTimeoutMs = CREATE_ATTEMPT_TIMEOUT_MS,
+}: Deps) {
   const findProvider = (name: string | null): Provider | undefined => providers.find((p) => p.name === name);
 
   /** Locks the account row, which serializes reservations, and counts its live sandboxes. */
@@ -148,7 +167,11 @@ export function createSandboxService({ db, providers, billing, maxRunningPerAcco
       const attemptStart = new Date();
       let created: CreatedSandbox;
       try {
-        created = await provider.create({ size: input.size, timeoutSeconds: input.timeoutSeconds, sandboxId });
+        created = await withTimeout(
+          provider.create({ size: input.size, timeoutSeconds: input.timeoutSeconds, sandboxId }),
+          `${provider.name} create`,
+          createAttemptTimeoutMs,
+        );
       } catch (error) {
         console.error(`create ${sandboxId} on ${provider.name} failed:`, error);
         failures.push(`${provider.name} ${error instanceof ProviderError ? FAILURE_LABELS[error.code] : 'failed'}`);
@@ -187,8 +210,13 @@ export function createSandboxService({ db, providers, billing, maxRunningPerAcco
         if (!placed) throw new AppError('provider_error', 'Sandbox creation took too long');
         return placed;
       } catch (error) {
-        // Never leave a provider sandbox running that we failed to record.
+        // Never leave a provider sandbox running that we failed to record, nor a row holding a slot.
         await provider.kill(created.providerSandboxId).catch((e) => console.error(`kill after failed placement:`, e));
+        await db
+          .update(sandboxes)
+          .set({ status: 'failed', holdMicros: 0, endedAt: new Date(), endReason: 'create_failed', costMicros: 0 })
+          .where(and(eq(sandboxes.id, sandboxId), eq(sandboxes.status, 'creating')))
+          .catch((e: unknown) => console.error(`marking ${sandboxId} failed:`, e));
         throw error;
       }
     }
@@ -328,8 +356,20 @@ export function createSandboxService({ db, providers, billing, maxRunningPerAcco
       await db.transaction(async (tx) => {
         await tx.execute(LOCK_TIMEOUT);
         // The sandbox lock serializes timeout changes on one sandbox, including the provider
-        // call, so the provider and our row always agree on the deadline.
-        const [current] = await tx.select().from(sandboxes).where(eq(sandboxes.id, sandboxId)).for('update');
+        // call, so the provider and our row always agree on the deadline. A second change while
+        // one is in progress is refused rather than queued, so concurrent requests can't tie up
+        // database connections waiting on the provider.
+        const [current] = await tx
+          .select()
+          .from(sandboxes)
+          .where(eq(sandboxes.id, sandboxId))
+          .for('update', { noWait: true })
+          .catch((error: unknown) => {
+            if (isLockNotAvailable(error)) {
+              throw new AppError('conflict', `The timeout of sandbox ${sandboxId} is already being changed; try again`);
+            }
+            throw error;
+          });
         if (!current || current.status !== 'running' || current.expiresAt.getTime() <= Date.now()) {
           throw new AppError('sandbox_not_running', `Sandbox ${sandboxId} has ended`);
         }
@@ -349,7 +389,11 @@ export function createSandboxService({ db, providers, billing, maxRunningPerAcco
         // sandbox at our (earlier) deadline instead.
         if (provider.canExtendTimeout) {
           try {
-            await provider.setTimeout({ providerSandboxId: current.providerSandboxId!, expiresAt });
+            await withTimeout(
+              provider.setTimeout({ providerSandboxId: current.providerSandboxId!, expiresAt }),
+              `${provider.name} set timeout`,
+              SET_TIMEOUT_PROVIDER_TIMEOUT_MS,
+            );
           } catch (error) {
             providerFailure = { error };
             throw error;
@@ -410,7 +454,8 @@ export function createSandboxService({ db, providers, billing, maxRunningPerAcco
       .orderBy(sandboxes.expiresAt)
       .limit(limit);
     let settled = 0;
-    for (const { id } of due) {
+    // A few at a time, so one slow provider kill doesn't hold up every other sandbox.
+    const settleOne = async (id: string) => {
       try {
         const done = await db.transaction(async (tx) => {
           await tx.execute(LOCK_TIMEOUT);
@@ -439,6 +484,9 @@ export function createSandboxService({ db, providers, billing, maxRunningPerAcco
       } catch (error) {
         console.error(`settling expired ${id} failed:`, error);
       }
+    };
+    for (let i = 0; i < due.length; i += SETTLE_CONCURRENCY) {
+      await Promise.all(due.slice(i, i + SETTLE_CONCURRENCY).map(({ id }) => settleOne(id)));
     }
     return settled;
   }
@@ -516,6 +564,14 @@ export function createSandboxService({ db, providers, billing, maxRunningPerAcco
 }
 
 export type SandboxService = ReturnType<typeof createSandboxService>;
+
+/** True for Postgres' lock_not_available, also when wrapped by the query builder. */
+function isLockNotAvailable(error: unknown): boolean {
+  for (let e: unknown = error, depth = 0; e && depth < 3; e = (e as { cause?: unknown }).cause, depth++) {
+    if ((e as { code?: unknown }).code === LOCK_NOT_AVAILABLE) return true;
+  }
+  return false;
+}
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

@@ -43,12 +43,27 @@ export class SandboxRouterError extends Error {
 
 /** HTTP status the API would have used for an error that arrives inside a command stream. */
 const STREAM_ERROR_STATUS: Record<string, number> = {
-  sandbox_not_running: 409,
   bad_request: 400,
+  unauthorized: 401,
+  forbidden: 403,
   not_found: 404,
-  provider_error: 502,
+  file_not_found: 404,
+  sandbox_not_running: 409,
+  conflict: 409,
+  payload_too_large: 413,
+  limit_exceeded: 429,
   internal_error: 500,
+  provider_error: 502,
+  no_provider: 503,
 };
+
+/**
+ * Node's fetch gives up waiting for response headers after 300 seconds, and a buffered exec
+ * only answers when the command exits, so longer commands are run over a stream instead.
+ */
+const BUFFERED_EXEC_MAX_SECONDS = 240;
+/** The server's per-stream cap on buffered output, mirrored for streamed execs. */
+const MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
 
 type RawBody = NonNullable<RequestInit['body']>;
 type Body = RawBody | object | undefined;
@@ -188,9 +203,29 @@ export class Sandbox {
   }
 
   /** Runs a command with `bash -lc` and returns its output once it exits. */
-  exec(command: string, options: ExecOptions = {}): Promise<ExecResult> {
-    const { signal, ...rest } = options;
-    return this.transport.json('POST', this.path('/exec'), { body: { command, ...rest }, signal });
+  async exec(command: string, options: ExecOptions = {}): Promise<ExecResult> {
+    if ((options.timeout ?? 0) <= BUFFERED_EXEC_MAX_SECONDS) {
+      const { signal, ...rest } = options;
+      return this.transport.json('POST', this.path('/exec'), { body: { command, ...rest }, signal });
+    }
+    const stdout = new OutputCollector(MAX_OUTPUT_BYTES);
+    const stderr = new OutputCollector(MAX_OUTPUT_BYTES);
+    for await (const event of this.execStream(command, options)) {
+      if (event.type === 'stdout') stdout.add(event.data);
+      else if (event.type === 'stderr') stderr.add(event.data);
+      else {
+        return {
+          exitCode: event.exitCode,
+          timedOut: event.timedOut,
+          stdout: stdout.text(),
+          stderr: stderr.text(),
+          truncated: stdout.truncated || stderr.truncated,
+          durationMs: event.durationMs,
+        };
+      }
+    }
+    // execStream throws if the stream ends without an exit event.
+    throw new SandboxRouterError(0, 'stream_closed', 'The command stream closed before the command exited');
   }
 
   /** Runs a command and yields its output as it is produced, ending with an `exit` event. */
@@ -283,5 +318,35 @@ export class Files {
   /** Removes a file, or a directory recursively. */
   async remove(path: string): Promise<void> {
     await this.transport.request('DELETE', `${this.base}/files`, { query: { path } });
+  }
+}
+
+/** Keeps output up to a byte limit, like the server does for buffered execs. */
+class OutputCollector {
+  private readonly parts: string[] = [];
+  private bytes = 0;
+  private readonly limit: number;
+  private readonly encoder = new TextEncoder();
+  truncated = false;
+
+  constructor(limit: number) {
+    this.limit = limit;
+  }
+
+  add(chunk: string) {
+    if (this.truncated) return;
+    const encoded = this.encoder.encode(chunk);
+    if (this.bytes + encoded.length <= this.limit) {
+      this.parts.push(chunk);
+      this.bytes += encoded.length;
+      return;
+    }
+    this.parts.push(new TextDecoder().decode(encoded.subarray(0, this.limit - this.bytes)));
+    this.bytes = this.limit;
+    this.truncated = true;
+  }
+
+  text() {
+    return this.parts.join('');
   }
 }
