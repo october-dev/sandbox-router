@@ -4,6 +4,7 @@ import { createE2BProvider } from './e2b.ts';
 import { ModalClient } from 'modal';
 import { createModalProvider } from './modal.ts';
 import { createNovitaProvider } from './novita.ts';
+import { createRunCloudProvider } from './runcloud.ts';
 import { createVercelProvider } from './vercel.ts';
 import type { Provider } from './types.ts';
 
@@ -20,6 +21,7 @@ import type { Provider } from './types.ts';
  *   NOVITA_DOMAIN (optional), NOVITA_TEMPLATE_SMALL / _MEDIUM / _LARGE (optional template ids
  *   when the default names don't resolve). Build the size templates first: build:novita-templates
  * - BOAT_API_KEY, BOAT_MAX_LIFETIME_HOURS (2 on trial, 720 on paid; defaults to 2), BOAT_BASE_URL (optional)
+ * - RUN_CLOUD_API_KEY, RUN_CLOUD_API_URL, RUN_CLOUD_REGION, RUN_CLOUD_IMAGE (all optional but the key)
  * - VERCEL_TOKEN, VERCEL_TEAM_ID, VERCEL_PROJECT_ID (all three), VERCEL_MAX_LIFETIME_HOURS
  *   (0.75 on Hobby, 24 on Pro; defaults to 0.75), VERCEL_REGION (optional, e.g. "iad1")
  */
@@ -68,6 +70,16 @@ export function providersFromEnv(env: NodeJS.ProcessEnv): Provider[] {
         apiKey: env.BOAT_API_KEY,
         baseUrl: env.BOAT_BASE_URL || undefined,
         maxLifetimeSeconds: hoursToSeconds(env.BOAT_MAX_LIFETIME_HOURS, '2', 'BOAT_MAX_LIFETIME_HOURS'),
+      }),
+    );
+  }
+  if (env.RUN_CLOUD_API_KEY) {
+    providers.push(
+      createRunCloudProvider({
+        apiKey: env.RUN_CLOUD_API_KEY,
+        apiUrl: env.RUN_CLOUD_API_URL || undefined,
+        region: env.RUN_CLOUD_REGION || undefined,
+        image: env.RUN_CLOUD_IMAGE || undefined,
       }),
     );
   }

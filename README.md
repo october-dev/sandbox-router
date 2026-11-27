@@ -22,7 +22,7 @@
 
 ---
 
-**One API for cloud sandboxes on E2B, Daytona, Modal, Vercel, Novita and boat.** Ask for a size and say whether you want it `cheap` or `fast`. Sandbox Router picks the best provider, moves on to the next one if creation fails, and tells you what each sandbox costs at the provider's list price.
+**One API for cloud sandboxes on E2B, Daytona, Modal, Vercel, Novita, boat and run.cloud.** Ask for a size and say whether you want it `cheap` or `fast`. Sandbox Router picks the best provider, moves on to the next one if creation fails, and tells you what each sandbox costs at the provider's list price.
 
 You run it yourself, with your own provider keys. They never leave your environment.
 
@@ -57,6 +57,7 @@ Set the keys for the providers you want; any provider without keys is simply not
 | [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox) | `vercel` | Firecracker microVM | `VERCEL_TOKEN`, `VERCEL_TEAM_ID`, `VERCEL_PROJECT_ID` | 2 GB of memory per vCPU. Ports 3000, 5173, 8000 and 8080 are exposed |
 | [Novita](https://novita.ai/sandbox) | `novita` | Firecracker microVM | `NOVITA_API_KEY` | Build size templates once (below) |
 | [boat](https://boat.dev) | `boat` | KVM VM | `BOAT_API_KEY` | Smallest machine is 2 vCPU / 4 GiB |
+| [run.cloud](https://run.cloud) | `runcloud` | Firecracker microVM | `RUN_CLOUD_API_KEY` | Exact size for every size. Port URLs are tunnels that last until the sandbox's deadline (at most 24 h); ask again after extending the timeout |
 
 Sizes are `small` (1 vCPU / 1 GiB), `medium` (2 / 4) and `large` (4 / 8). Where a provider has no exact match, you get the nearest larger machine, and the sandbox reports the resources and price it actually got.
 
@@ -193,11 +194,12 @@ Provider settings, all optional except the keys:
 | `VERCEL_TOKEN`, `VERCEL_TEAM_ID`, `VERCEL_PROJECT_ID` | Also `VERCEL_MAX_LIFETIME_HOURS` (`0.75` on Hobby, `24` on Pro; default `0.75`), `VERCEL_REGION` |
 | `NOVITA_API_KEY` | Also `NOVITA_MAX_LIFETIME_HOURS` (`1` Free, `3` Paid, `4` Enterprise; default `1`), `NOVITA_DOMAIN`, and `NOVITA_TEMPLATE_SMALL` / `_MEDIUM` / `_LARGE` for template ids if the built templates' names don't resolve |
 | `BOAT_API_KEY` | Also `BOAT_MAX_LIFETIME_HOURS` (`2` on trial, `720` on paid; default `2`), `BOAT_BASE_URL` |
+| `RUN_CLOUD_API_KEY` | Also `RUN_CLOUD_REGION`, `RUN_CLOUD_IMAGE` (default `runcloud/agent-base`, Ubuntu 24.04), `RUN_CLOUD_API_URL` |
 
 ## Layout
 
 ```
-packages/providers  E2B, Daytona, Modal, Vercel, Novita and boat behind one interface
+packages/providers  E2B, Daytona, Modal, Vercel, Novita, boat and run.cloud behind one interface
 packages/core       routing, failover, the sandbox lifecycle, API keys
 packages/db         Postgres schema and migrations (Drizzle)
 packages/server     the HTTP API, auth, the background worker, and the self-hosted entry point

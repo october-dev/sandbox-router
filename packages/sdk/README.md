@@ -1,7 +1,7 @@
 # sandboxrouter
 
 TypeScript client for [Sandbox Router](https://github.com/october-dev/sandbox-router): one API for cloud
-sandboxes on E2B, Daytona, Modal, Vercel Sandbox, Novita and boat. You point it at a Sandbox Router server,
+sandboxes on E2B, Daytona, Modal, Vercel Sandbox, Novita, boat and run.cloud. You point it at a Sandbox Router server,
 for example one you [run yourself](https://github.com/october-dev/sandbox-router#run-it). The server holds
 the provider keys and picks the provider.
 

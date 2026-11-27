@@ -54,6 +54,10 @@ services:
       BOAT_API_KEY: ${BOAT_API_KEY:-}
       BOAT_MAX_LIFETIME_HOURS: ${BOAT_MAX_LIFETIME_HOURS:-2}
       BOAT_BASE_URL: ${BOAT_BASE_URL:-}
+      RUN_CLOUD_API_KEY: ${RUN_CLOUD_API_KEY:-}
+      RUN_CLOUD_API_URL: ${RUN_CLOUD_API_URL:-}
+      RUN_CLOUD_REGION: ${RUN_CLOUD_REGION:-}
+      RUN_CLOUD_IMAGE: ${RUN_CLOUD_IMAGE:-}
       MAX_RUNNING_SANDBOXES: ${MAX_RUNNING_SANDBOXES:-10}
     ports:
       # Bound to localhost only. Put a TLS proxy in front before exposing it.

@@ -75,7 +75,7 @@ export function createApp(options: CreateAppOptions): App {
       title: 'Sandbox Router API',
       version: '1.0.0',
       description:
-        'One API for cloud sandboxes on E2B, Daytona, Modal, Vercel Sandbox, Novita and boat. ' +
+        'One API for cloud sandboxes on E2B, Daytona, Modal, Vercel Sandbox, Novita, boat and run.cloud. ' +
         'Create a sandbox with a size and a preset (`cheap` or `fast`) and Sandbox Router places it on the best ' +
         'configured provider, failing over to the next one, and records its cost at the provider\'s list price.',
     },

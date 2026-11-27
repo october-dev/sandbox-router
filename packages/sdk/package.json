@@ -1,7 +1,7 @@
 {
   "name": "sandboxrouter",
   "version": "0.1.0",
-  "description": "TypeScript client for Sandbox Router: one API for cloud sandboxes on E2B, Daytona, Modal, Vercel Sandbox, Novita and boat.",
+  "description": "TypeScript client for Sandbox Router: one API for cloud sandboxes on E2B, Daytona, Modal, Vercel Sandbox, Novita, boat and run.cloud.",
   "keywords": [
     "sandbox",
     "code-execution",

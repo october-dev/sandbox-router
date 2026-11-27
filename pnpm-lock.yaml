@@ -85,6 +85,9 @@ importers:
       '@daytona/sdk':
         specifier: 0.227.3
         version: 0.227.3
+      '@run-cloud/sdk':
+        specifier: 0.69.0
+        version: 0.69.0
       '@vercel/sandbox':
         specifier: 3.9.1
         version: 3.9.1
@@ -1182,6 +1185,10 @@ packages:
   '@rolldown/pluginutils@1.1.0':
     resolution: {integrity: sha512-K+NU2HDCEem4sClgHH4ZZXwdJeNFkJo+hRk479DIwdIviAPN2hFJH1KHHwg8CxHQXvi0M5XY4deTXINfIiSG6w==}
 
+  '@run-cloud/sdk@0.69.0':
+    resolution: {integrity: sha512-LPkQtMDBn3Oh2tJLuF0cdl8pEBf+8MVqwU9055947/jzn747TpP2GtBO0dBtJ81a8W9/ZSDmFKXn9X/Nj24ilA==}
+    engines: {node: '>=20'}
+
   '@scalar/client-side-rendering@0.4.18':
     resolution: {integrity: sha512-5y3qJZ9shR27a77Q7RVd98KbTKXk+uZ5/cXdIQpt9j5EG/s9xcLD8AOp/0uBNQwUmfA5IFNOCDVLWr8OYWmbRg==}
     engines: {node: '>=22'}
@@ -1252,6 +1259,9 @@ packages:
 
   '@types/pg@8.23.1':
     resolution: {integrity: sha512-fKVHpikPdg4GKks3JuLEhvwSyvwzF23hnabPy6DD8ljVbC7+6J5dQzdv4arV6jqq57djnMgs1HKBxX4P8aBI3A==}
+
+  '@types/ws@8.18.2':
+    resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
 
   '@vercel/cli-config@0.3.1':
     resolution: {integrity: sha512-sISbygqlFXYb8qfPu/+2Cf/A8IjrlAuZePdag3EDQr2PRA455s7UZtl9Ro674CWsB/saBRmz3jEkw0YsQs8OoQ==}
@@ -1701,6 +1711,10 @@ packages:
 
   ieee754@1.2.1:
     resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
+
+  ignore@7.0.17:
+    resolution: {integrity: sha512-0c3zcBRlWmcKhcIQWckzkYncJRv5HHB8O32wO/FcWL8DDXWDJgiEF6SX9ThbTv5h/eZ+xJK+VvDjjQ+cQJhp3Q==}
+    engines: {node: '>= 4'}
 
   import-in-the-middle@3.6.0:
     resolution: {integrity: sha512-xRU7hI24S2FhucXtuZXn8EpcOjfVP6iiEQyR0USayPeaOroEmSsNlqnl95866iRdRtkHrd6Q/Z4D14R60au0+A==}
@@ -3292,6 +3306,17 @@ snapshots:
 
   '@rolldown/pluginutils@1.1.0': {}
 
+  '@run-cloud/sdk@0.69.0':
+    dependencies:
+      '@opentelemetry/api': 1.10.0
+      '@types/ws': 8.18.2
+      ignore: 7.0.17
+      tar: 7.5.23
+      ws: 8.22.0
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   '@scalar/client-side-rendering@0.4.18':
     dependencies:
       '@scalar/helpers': 0.17.1
@@ -3379,6 +3404,10 @@ snapshots:
       '@types/node': 26.6.6
       pg-protocol: 1.16.1
       pg-types: 2.2.0
+
+  '@types/ws@8.18.2':
+    dependencies:
+      '@types/node': 26.6.6
 
   '@vercel/cli-config@0.3.1':
     dependencies:
@@ -3820,6 +3849,8 @@ snapshots:
   human-signals@2.1.0: {}
 
   ieee754@1.2.1: {}
+
+  ignore@7.0.17: {}
 
   import-in-the-middle@3.6.0:
     dependencies:

@@ -8,7 +8,7 @@ export const SIZE_SPECS: Record<Size, { cpu: number; memoryMib: number }> = {
   large: { cpu: 4, memoryMib: 8192 },
 };
 
-export const PROVIDER_NAMES = ['e2b', 'daytona', 'daytona-vm', 'novita', 'modal-gvisor', 'modal-vm', 'vercel', 'boat'] as const;
+export const PROVIDER_NAMES = ['e2b', 'daytona', 'daytona-vm', 'novita', 'modal-gvisor', 'modal-vm', 'vercel', 'boat', 'runcloud'] as const;
 export type ProviderName = (typeof PROVIDER_NAMES)[number];
 
 /** Label put on every provider sandbox so it can be traced back to our sandbox id. */
