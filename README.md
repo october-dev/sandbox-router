@@ -98,7 +98,23 @@ pnpm dev
 
 The server runs its own database migrations on start. The API is at `http://localhost:8787`, with a full reference at `/docs` and the OpenAPI document at `/openapi.json`. `GET /healthz` checks the database.
 
-Docker Compose publishes the port on `127.0.0.1` only. To reach the server from elsewhere, put a TLS proxy in front of it.
+Docker Compose publishes the port on `127.0.0.1` only. To reach the server from elsewhere, put a TLS proxy in front of it, or deploy it to a platform that terminates TLS for you:
+
+**On Render** (the server and a Postgres database, on paid plans): [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/october-dev/sandbox-router)
+
+Render asks for provider keys as it creates the [Blueprint](render.yaml); fill in the providers you use and leave the others empty. It generates `ADMIN_TOKEN`; copy it from the service's Environment page.
+
+**On Fly.io**, with [fly.toml](fly.toml) and the `fly` CLI:
+
+```bash
+fly launch --copy-config --no-deploy            # pick an app name and region
+fly postgres create --name <app>-db             # or bring any Postgres and set DATABASE_URL
+fly postgres attach <app>-db                    # sets DATABASE_URL
+fly secrets set ADMIN_TOKEN=$(openssl rand -hex 32) E2B_API_KEY=...
+fly deploy --ha=false
+```
+
+Run a single instance on either platform: the server also runs the worker that kills sandboxes at their deadline, and keeps its limits in memory. For the same reason, don't let the platform stop it when idle.
 
 ## First steps
 

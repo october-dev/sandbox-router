@@ -1,0 +1,70 @@
+# Render Blueprint for a self-hosted Sandbox Router: the server (API and worker in one
+# process, built from the Dockerfile) and a Postgres database.
+#
+#   Deploy: https://render.com/deploy?repo=https://github.com/october-dev/sandbox-router
+#   Spec:   https://render.com/docs/blueprint-spec
+#
+# Render asks for the provider keys when the Blueprint is created; fill in the providers you
+# use and leave the rest empty. ADMIN_TOKEN is generated: copy it from the service's
+# Environment page to create API keys. The server applies its database migrations on start.
+
+services:
+  - type: web
+    name: sandbox-router
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: oregon
+    plan: 0.5c-512mb
+    # One instance: it also runs the worker that kills sandboxes at their deadline, and
+    # applies limits (running sandboxes, operations in flight) in memory.
+    numInstances: 1
+    healthCheckPath: /healthz
+    # Lets command streams finish during deploys (Render's maximum).
+    maxShutdownDelaySeconds: 300
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sandbox-router-db
+          property: connectionString
+      - key: ADMIN_TOKEN
+        generateValue: true
+      - key: MAX_RUNNING_SANDBOXES
+        value: "10"
+      # Providers: any provider without a key is not offered. See README.md for each one.
+      - key: E2B_API_KEY
+        sync: false
+      - key: DAYTONA_API_KEY
+        sync: false
+      - key: MODAL_TOKEN_ID
+        sync: false
+      - key: MODAL_TOKEN_SECRET
+        sync: false
+      - key: VERCEL_TOKEN
+        sync: false
+      - key: VERCEL_TEAM_ID
+        sync: false
+      - key: VERCEL_PROJECT_ID
+        sync: false
+      - key: NOVITA_API_KEY
+        sync: false
+      - key: BOAT_API_KEY
+        sync: false
+      # Longest sandbox each plan allows; raise these to match your provider plans.
+      - key: E2B_MAX_LIFETIME_HOURS
+        value: "1"
+      - key: VERCEL_MAX_LIFETIME_HOURS
+        value: "0.75"
+      - key: NOVITA_MAX_LIFETIME_HOURS
+        value: "1"
+      - key: BOAT_MAX_LIFETIME_HOURS
+        value: "2"
+
+databases:
+  - name: sandbox-router-db
+    databaseName: sandboxrouter
+    user: sandboxrouter
+    region: oregon
+    plan: basic-256mb
+    postgresMajorVersion: "17"
+    # Reachable only from services in this Render account, not from the internet.
+    ipAllowList: []
