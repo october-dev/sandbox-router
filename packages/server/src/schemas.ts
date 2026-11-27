@@ -24,11 +24,19 @@ export const ErrorBody = z
   })
   .openapi('Error');
 
+/**
+ * A string Postgres can store and a shell passes on whole: no NUL characters (Postgres
+ * refuses them, and system calls cut a string short at one) and no unpaired surrogates
+ * (not valid Unicode, refused in JSON columns). Either would otherwise fail with a 500.
+ */
+const text = () =>
+  z.string().refine((s) => !s.includes('\0') && s.isWellFormed(), 'Must be valid Unicode without NUL characters');
+
 export const timestamp = z.string().openapi({ format: 'date-time', example: '2026-11-03T12:00:00.000Z' });
 export const usd = (description: string) => z.number().openapi({ description, example: 0.1656 });
 
 export const SandboxIdParam = z.object({
-  id: z.string().openapi({ param: { name: 'id', in: 'path' }, example: 'sbx_a7k2m9q4w1e8r5t3y6u0' }),
+  id: text().openapi({ param: { name: 'id', in: 'path' }, example: 'sbx_a7k2m9q4w1e8r5t3y6u0' }),
 });
 
 export const Sandbox = z
@@ -94,7 +102,7 @@ export const CreateSandboxBody = z
       .default(DEFAULT_TIMEOUT_SECONDS)
       .openapi({ description: 'Seconds until the sandbox is killed. Extend with POST /v1/sandboxes/{id}/timeout.' }),
     metadata: z
-      .record(z.string().min(1).max(64), z.string().max(512))
+      .record(text().min(1).max(64), text().max(512))
       .refine((m) => Object.keys(m).length <= 20, 'At most 20 metadata keys')
       .default({}),
   })
@@ -114,7 +122,7 @@ export const SetTimeoutBody = z
 export const ListSandboxesQuery = z.object({
   status: z.enum(SANDBOX_STATUSES).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
-  before: z.string().optional().openapi({ description: 'Pass `nextCursor` from the previous page.' }),
+  before: text().optional().openapi({ description: 'Pass `nextCursor` from the previous page.' }),
 });
 
 export const SandboxList = z
@@ -123,9 +131,9 @@ export const SandboxList = z
 
 export const ExecBody = z
   .object({
-    command: z.string().min(1).openapi({ description: 'Run with `bash -lc`.', example: 'python3 --version' }),
-    cwd: z.string().optional().openapi({ description: 'Defaults to the home directory.' }),
-    env: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'Invalid environment variable name'), z.string()).default({}),
+    command: text().min(1).openapi({ description: 'Run with `bash -lc`.', example: 'python3 --version' }),
+    cwd: text().optional().openapi({ description: 'Defaults to the home directory.' }),
+    env: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'Invalid environment variable name'), text()).default({}),
     timeout: z
       .number()
       .int()
@@ -165,11 +173,11 @@ export const ExecStreamEvent = z
   });
 
 export const PathQuery = z.object({
-  path: z.string().min(1).openapi({ description: 'Absolute, or relative to the home directory.', example: 'app/main.py' }),
+  path: text().min(1).openapi({ description: 'Absolute, or relative to the home directory.', example: 'app/main.py' }),
 });
 
 export const ListFilesQuery = z.object({
-  path: z.string().min(1).default('.').openapi({ description: 'Directory to list; defaults to the home directory.' }),
+  path: text().min(1).default('.').openapi({ description: 'Directory to list; defaults to the home directory.' }),
 });
 
 export const FileEntry = z
@@ -242,7 +250,7 @@ export const CreatedApiKey = ApiKey.extend({
   key: z.string().openapi({ description: 'The full key. It is shown only once.' }),
 }).openapi('CreatedApiKey');
 
-export const CreateApiKeyBody = z.object({ name: z.string().trim().min(1).max(100) }).openapi('CreateApiKey');
+export const CreateApiKeyBody = z.object({ name: text().trim().min(1).max(100) }).openapi('CreateApiKey');
 
 export const ApiKeyIdParam = z.object({
   id: z.uuid().openapi({ param: { name: 'id', in: 'path' } }),

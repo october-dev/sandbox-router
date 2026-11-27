@@ -115,3 +115,24 @@ describe('createApp middleware', () => {
     expect((await withHeader.request('/v1/sandboxes')).headers.get('x-extra')).toBe('yes');
   });
 });
+
+describe('input the database cannot store', () => {
+  it('refuses NUL characters and unpaired surrogates with a 400 instead of failing with a 500', async () => {
+    const { key } = await newKey();
+    const nul = 'a\u0000b';
+    const created = await call('/v1/sandboxes', { method: 'POST', token: key, json: { metadata: { tag: nul } } });
+    expect(created.status).toBe(400);
+    expect((await call('/v1/sandboxes', { method: 'POST', token: key, json: { metadata: { [nul]: 'x' } } })).status).toBe(400);
+    // An unpaired surrogate, which JSON.stringify escapes and Postgres refuses in jsonb.
+    const lone = await call('/v1/sandboxes', { method: 'POST', token: key, json: { metadata: { tag: '\ud800' } } });
+    expect(lone.status).toBe(400);
+    expect((await call('/v1/api-keys', { method: 'POST', token: ADMIN, json: { name: nul } })).status).toBe(400);
+    expect((await call(`/v1/sandboxes?before=${encodeURIComponent(nul)}`, { token: key })).status).toBe(400);
+    const sandbox = (await (await call('/v1/sandboxes', { method: 'POST', token: key, json: {} })).json()) as { id: string };
+    expect((await call(`/v1/sandboxes/${encodeURIComponent(`${sandbox.id}\u0000`)}`, { token: key })).status).not.toBe(500);
+    const files = `/v1/sandboxes/${sandbox.id}/files/content?path=${encodeURIComponent(nul)}`;
+    expect((await call(files, { token: key })).status).toBe(400);
+    const exec = await call(`/v1/sandboxes/${sandbox.id}/exec`, { method: 'POST', token: key, json: { command: 'true', cwd: nul } });
+    expect(exec.status).toBe(400);
+  });
+});
