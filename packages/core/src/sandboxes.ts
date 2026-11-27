@@ -134,6 +134,7 @@ export function createSandboxService({
     // Reserve enough for the priciest candidate, since failover may land on it.
     const estimatedRate = Math.max(...candidates.map((p) => p.ratePerHourMicros(p.resources(input.size))));
     const timeoutMs = input.timeoutSeconds * 1000;
+    const reservedHold = costMicros(estimatedRate, timeoutMs);
     const sandboxId = newSandboxId();
     await db.transaction(async (tx) => {
       await tx.execute(LOCK_TIMEOUT);
@@ -141,7 +142,7 @@ export function createSandboxService({
       if (liveSandboxes >= maxRunningPerAccount) {
         throw new AppError('limit_exceeded', `At most ${maxRunningPerAccount} sandboxes can run at once`);
       }
-      const hold = costMicros(estimatedRate, timeoutMs);
+      const hold = reservedHold;
       const available = await billing.availableMicros(tx, accountId, { lock: true });
       if (available < hold) {
         throw new AppError(
@@ -188,27 +189,50 @@ export function createSandboxService({
         );
         const expiresAt = new Date(startedAt.getTime() + timeoutMs);
         const rate = provider.ratePerHourMicros(created);
-        const [placed] = await db
-          .update(sandboxes)
-          .set({
-            status: 'running',
-            provider: provider.name,
-            providerSandboxId: created.providerSandboxId,
-            cpu: created.cpu,
-            memoryMib: created.memoryMib,
-            diskMib: created.diskMib,
-            homeDir: created.homeDir,
-            ratePerHourMicros: rate,
-            // Exactly the cost of the full timeout. Exceeds the reserved estimate only if
-            // the provider reports more resources than the size asks for.
-            holdMicros: costMicros(rate, timeoutMs),
-            billingStartedAt: startedAt,
-            expiresAt,
-          })
-          .where(and(eq(sandboxes.id, sandboxId), eq(sandboxes.status, 'creating')))
-          .returning();
-        if (!placed) throw new AppError('provider_error', 'Sandbox creation took too long');
-        return placed;
+        // Exactly the cost of the full timeout. Exceeds the reserved estimate only if the
+        // provider reports more resources than the size asks for; the difference must then
+        // still be available, or the sandbox is not placed.
+        const hold = costMicros(rate, timeoutMs);
+        return await db.transaction(async (tx) => {
+          await tx.execute(LOCK_TIMEOUT);
+          // The sandbox row first, then the account, as everywhere else.
+          const [row] = await tx
+            .select({ holdMicros: sandboxes.holdMicros })
+            .from(sandboxes)
+            .where(and(eq(sandboxes.id, sandboxId), eq(sandboxes.status, 'creating')))
+            .for('update');
+          if (!row) throw new AppError('provider_error', 'Sandbox creation took too long');
+          const increase = hold - row.holdMicros;
+          if (increase > 0) {
+            await lockAccount(tx, accountId);
+            const available = await billing.availableMicros(tx, accountId, { lock: true });
+            if (available < increase) {
+              throw new AppError(
+                'insufficient_funds',
+                `${provider.name} placed this sandbox on a larger machine than requested, which needs ` +
+                  `${usd(increase)} more available; you have ${usd(available)}`,
+              );
+            }
+          }
+          const [placed] = await tx
+            .update(sandboxes)
+            .set({
+              status: 'running',
+              provider: provider.name,
+              providerSandboxId: created.providerSandboxId,
+              cpu: created.cpu,
+              memoryMib: created.memoryMib,
+              diskMib: created.diskMib,
+              homeDir: created.homeDir,
+              ratePerHourMicros: rate,
+              holdMicros: hold,
+              billingStartedAt: startedAt,
+              expiresAt,
+            })
+            .where(eq(sandboxes.id, sandboxId))
+            .returning();
+          return placed!;
+        });
       } catch (error) {
         // Never leave a provider sandbox running that we failed to record, nor a row holding a slot.
         await provider.kill(created.providerSandboxId).catch((e) => console.error(`kill after failed placement:`, e));
@@ -571,6 +595,10 @@ function isLockNotAvailable(error: unknown): boolean {
     if ((e as { code?: unknown }).code === LOCK_NOT_AVAILABLE) return true;
   }
   return false;
+}
+
+function usd(micros: number): string {
+  return `$${(micros / 1e6).toFixed(4)}`;
 }
 
 function errorText(error: unknown): string {

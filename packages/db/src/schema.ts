@@ -20,9 +20,9 @@ const micros = (name: string) => bigint(name, { mode: 'number' });
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true });
 const quoted = (values: readonly string[]) => values.map((v) => `'${v}'`).join(', ');
 
-// Every table enables row level security with no policies. Supabase exposes the
-// public schema through its Data API; RLS without policies denies that path entirely,
-// while our server connects as the table owner and is unaffected.
+// Every table enables row level security with no policies. Some hosted Postgres services
+// (Supabase, for one) expose the public schema through an HTTP API; RLS without policies
+// denies that path entirely, while our server connects as the table owner and is unaffected.
 
 export const SANDBOX_STATUSES = ['creating', 'running', 'ended', 'failed'] as const;
 export type SandboxStatus = (typeof SANDBOX_STATUSES)[number];

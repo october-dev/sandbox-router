@@ -1,5 +1,5 @@
 // The sandbox lifecycle without billing, as self-hosted deployments run it.
-// Cloud billing (holds, charges, races) is tested separately in the cloud repository.
+// Prepaid billing (holds, charges, races) is tested where a Billing implementation lives.
 import { createAttempts, sandboxes } from '@sr/db';
 import { ProviderError } from '@sr/providers';
 import { eq } from 'drizzle-orm';

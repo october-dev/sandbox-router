@@ -96,3 +96,22 @@ describe('self-hosted sandboxes', () => {
     expect(((await res.json()) as { data: Array<{ name: string }> }).data[0]!.name).toBe('e2b');
   });
 });
+
+describe('createApp middleware', () => {
+  it('runs extra middleware before every route', async () => {
+    const providers = [new FakeProvider('e2b')];
+    const withHeader = createApp({
+      db,
+      providers,
+      sandboxes: createSandboxService({ db, billing: noBilling, providers }),
+      middleware: [
+        async (c, next) => {
+          await next();
+          c.header('x-extra', 'yes');
+        },
+      ],
+    });
+    expect((await withHeader.request('/healthz')).headers.get('x-extra')).toBe('yes');
+    expect((await withHeader.request('/v1/sandboxes')).headers.get('x-extra')).toBe('yes');
+  });
+});

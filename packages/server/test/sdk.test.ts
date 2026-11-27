@@ -68,7 +68,7 @@ describe('SDK against the API', () => {
 
     const ended = await sandbox.kill();
     expect(ended).toMatchObject({ status: 'ended', endReason: 'killed' });
-    // Self-hosted servers record cost without charging; the balance endpoint is Cloud-only.
+    // Self-hosted servers record cost without charging and have no balance endpoint.
     expect(ended.costUsd).toBeGreaterThanOrEqual(0);
   });
 

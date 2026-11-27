@@ -1,6 +1,7 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { Scalar } from '@scalar/hono-api-reference';
 import { sql } from 'drizzle-orm';
+import type { MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { AppError } from '@sr/core';
 import { authenticate } from './auth.ts';
@@ -16,6 +17,8 @@ export interface CreateAppOptions extends ServerDeps {
    * share the app's authentication, error handling and OpenAPI document.
    */
   routes?: (app: App, auth: Auth) => void;
+  /** Runs before every route, in order, e.g. for rate limiting or security headers. */
+  middleware?: readonly MiddlewareHandler<AppEnv>[];
 }
 
 /** Largest JSON request body accepted. */
@@ -35,6 +38,7 @@ export function createApp(options: CreateAppOptions): App {
   });
 
   app.onError(handleError);
+  for (const handler of options.middleware ?? []) app.use('*', handler);
 
   // JSON bodies are small; only file uploads (which enforce their own limit) may be large.
   const jsonLimit = bodyLimit({
