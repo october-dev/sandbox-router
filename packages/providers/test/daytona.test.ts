@@ -46,3 +46,22 @@ describe('daytona provider', () => {
     expect(executed).toEqual([]);
   });
 });
+
+describe('paths that look like options', () => {
+  it('passes cwd after -- so cd never reads it as an option', async () => {
+    executed.length = 0;
+    const daytona = createDaytonaProvider({ apiKey: 'fake' });
+    const controller = new AbortController();
+    const request = {
+      command: 'true',
+      cwd: '-P',
+      env: {},
+      timeoutMs: 5_000,
+      onStdout: () => {},
+      onStderr: () => {},
+      signal: controller.signal,
+    };
+    await daytona.startBackground(ref, request);
+    expect(executed[0]).toMatch(/^cd -- '-P' && /);
+  });
+});

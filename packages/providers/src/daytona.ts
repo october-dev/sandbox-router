@@ -152,7 +152,7 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
       if (!isEnvName(key)) throw new ProviderError(name, 'invalid_request', `invalid environment variable name: ${key}`);
       return `${key}=${shellQuote(value)}`;
     });
-    return `cd ${shellQuote(cwd)} && env ${assignments.join(' ')} bash -lc ${shellQuote(command)}`;
+    return `cd -- ${shellQuote(cwd)} && env ${assignments.join(' ')} bash -lc ${shellQuote(command)}`;
   };
 
   return {

@@ -349,7 +349,7 @@ export function createModalProvider(config: ModalConfig): Provider {
       const f = shellQuote(pidFile);
       const script = [
         `echo $$ > ${f}`,
-        `cd ${shellQuote(request.cwd)} || { rm -f ${f}; exit 1; }`,
+        `cd -- ${shellQuote(request.cwd)} || { rm -f ${f}; exit 1; }`,
         `bash -lc ${shellQuote(request.command)} </dev/null`,
         'status=$?',
         `rm -f ${f}`,
@@ -433,7 +433,7 @@ export function createModalProvider(config: ModalConfig): Provider {
       // A new session with no stdio tied to the exec, so the exec ends at once and the process
       // outlives it. Confirm in the smoke test that Modal doesn't reap it when the exec exits.
       const script = [
-        `cd ${shellQuote(request.cwd)} || exit 1`,
+        `cd -- ${shellQuote(request.cwd)} || exit 1`,
         `nohup setsid bash -lc ${shellQuote(request.command)} </dev/null >/dev/null 2>&1 &`,
       ].join('\n');
       let exitCode: number;

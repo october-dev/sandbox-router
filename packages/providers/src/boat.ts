@@ -1,3 +1,4 @@
+import { posix } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   BoatApi,
@@ -124,7 +125,7 @@ export function createBoatProvider(config: BoatConfig): Provider {
       if (!isEnvName(key)) throw new ProviderError('boat', 'invalid_request', `invalid environment variable name: ${key}`);
       return `${key}=${shellQuote(value)}`;
     });
-    return `cd ${shellQuote(cwd)} && env ${assignments.join(' ')} bash -lc ${shellQuote(command)}`;
+    return `cd -- ${shellQuote(cwd)} && env ${assignments.join(' ')} bash -lc ${shellQuote(command)}`;
   };
 
   const deleteSandbox = (providerSandboxId: string) =>
@@ -397,7 +398,7 @@ export function createBoatProvider(config: BoatConfig): Provider {
         await response.body?.cancel();
         if (!response.ok) throw httpError(response.status, `upload ${path}`);
         if (staged) {
-          const dir = path.slice(0, path.lastIndexOf('/')) || '/';
+          const dir = posix.dirname(path);
           await stageWithShell(
             sh,
             sandboxId,

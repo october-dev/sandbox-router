@@ -3,7 +3,7 @@ import { Readable } from 'node:stream';
 import { APIError, type Command, Sandbox, type SandboxRegion, StreamError } from '@vercel/sandbox';
 import { ProviderError, type ProviderErrorCode, errorMessage } from './errors.ts';
 import { type PriceSheet, ratePerHour } from './pricing.ts';
-import { shellQuote } from './shell.ts';
+import { notAnOption, shellQuote } from './shell.ts';
 import {
   SANDBOX_ID_LABEL,
   type CreatedSandbox,
@@ -329,7 +329,7 @@ export function createVercelProvider(config: VercelConfig): Provider {
         // writeFiles takes whole buffers (it uploads a tarball), so the stream is collected first.
         const content = new Uint8Array(await new Response(data).arrayBuffer());
         // The tar extract probably creates parent directories, but that's unverified, so make them first.
-        await sandbox.fs.mkdir(posix.dirname(path), { recursive: true });
+        await sandbox.fs.mkdir(notAnOption(posix.dirname(path)), { recursive: true });
         await sandbox.writeFiles([{ path, content }]);
       } catch (error) {
         await failOperation(ref, error, `write ${path}`, 'other');
@@ -341,7 +341,8 @@ export function createVercelProvider(config: VercelConfig): Provider {
       // fs.readdir gives names and types only, so one find call gets sizes and times too.
       // -H follows the path itself when it is a symlink to a directory (the -d test above does).
       // NUL separators survive any file name.
-      const p = shellQuote(path);
+      // find has no `--`, so a path that looks like an option is made not to.
+      const p = shellQuote(notAnOption(path));
       const script =
         `[ -e ${p} ] || exit ${EXIT_MISSING}; [ -d ${p} ] || exit ${EXIT_NOT_DIR}; ` +
         `find -H ${p} -mindepth 1 -maxdepth 1 -printf '%f\\0%y\\0%s\\0%T@\\0'`;
