@@ -141,7 +141,7 @@ export const ExecBody = z
 
 export const ExecResult = z
   .object({
-    exitCode: z.number().int().nullable().openapi({ description: 'Null when the command was killed by its timeout.' }),
+    exitCode: z.number().int().nullable().openapi({ description: 'Null when the command was killed before it exited (its timeout, or the client went away).' }),
     timedOut: z.boolean(),
     stdout: z.string(),
     stderr: z.string(),

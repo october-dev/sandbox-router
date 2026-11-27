@@ -25,9 +25,12 @@ import type { Provider } from './types.ts';
 export function providersFromEnv(env: NodeJS.ProcessEnv): Provider[] {
   const providers: Provider[] = [];
   if (env.E2B_API_KEY) {
-    const hours = Number(env.E2B_MAX_LIFETIME_HOURS ?? '1');
-    if (!Number.isFinite(hours) || hours <= 0) throw new Error('E2B_MAX_LIFETIME_HOURS must be a positive number');
-    providers.push(createE2BProvider({ apiKey: env.E2B_API_KEY, maxLifetimeSeconds: Math.floor(hours * 3600) }));
+    providers.push(
+      createE2BProvider({
+        apiKey: env.E2B_API_KEY,
+        maxLifetimeSeconds: hoursToSeconds(env.E2B_MAX_LIFETIME_HOURS, '1', 'E2B_MAX_LIFETIME_HOURS'),
+      }),
+    );
   }
   if (env.DAYTONA_API_KEY) {
     const target = env.DAYTONA_TARGET || undefined;
@@ -48,7 +51,7 @@ export function providersFromEnv(env: NodeJS.ProcessEnv): Provider[] {
     providers.push(
       createNovitaProvider({
         apiKey: env.NOVITA_API_KEY,
-        maxLifetimeSeconds: hoursToSeconds(env.NOVITA_MAX_LIFETIME_HOURS ?? '1', 'NOVITA_MAX_LIFETIME_HOURS'),
+        maxLifetimeSeconds: hoursToSeconds(env.NOVITA_MAX_LIFETIME_HOURS, '1', 'NOVITA_MAX_LIFETIME_HOURS'),
         domain: env.NOVITA_DOMAIN || undefined,
       }),
     );
@@ -58,7 +61,7 @@ export function providersFromEnv(env: NodeJS.ProcessEnv): Provider[] {
       createBoatProvider({
         apiKey: env.BOAT_API_KEY,
         baseUrl: env.BOAT_BASE_URL || undefined,
-        maxLifetimeSeconds: hoursToSeconds(env.BOAT_MAX_LIFETIME_HOURS ?? '2', 'BOAT_MAX_LIFETIME_HOURS'),
+        maxLifetimeSeconds: hoursToSeconds(env.BOAT_MAX_LIFETIME_HOURS, '2', 'BOAT_MAX_LIFETIME_HOURS'),
       }),
     );
   }
@@ -69,7 +72,7 @@ export function providersFromEnv(env: NodeJS.ProcessEnv): Provider[] {
         token: env.VERCEL_TOKEN,
         teamId: env.VERCEL_TEAM_ID,
         projectId: env.VERCEL_PROJECT_ID,
-        maxLifetimeSeconds: hoursToSeconds(env.VERCEL_MAX_LIFETIME_HOURS ?? '0.75', 'VERCEL_MAX_LIFETIME_HOURS'),
+        maxLifetimeSeconds: hoursToSeconds(env.VERCEL_MAX_LIFETIME_HOURS, '0.75', 'VERCEL_MAX_LIFETIME_HOURS'),
         region: env.VERCEL_REGION || undefined,
       }),
     );
@@ -77,8 +80,9 @@ export function providersFromEnv(env: NodeJS.ProcessEnv): Provider[] {
   return providers;
 }
 
-function hoursToSeconds(value: string, name: string): number {
-  const hours = Number(value);
+/** An unset or empty variable takes the default, so `NAME=` in an env file behaves like leaving it out. */
+function hoursToSeconds(value: string | undefined, fallback: string, name: string): number {
+  const hours = Number(value?.trim() || fallback);
   if (!Number.isFinite(hours) || hours <= 0) throw new Error(`${name} must be a positive number`);
   return Math.floor(hours * 3600);
 }

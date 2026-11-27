@@ -38,6 +38,13 @@ describe('providersFromEnv', () => {
     expect(() => providersFromEnv({ BOAT_API_KEY: 'x', BOAT_MAX_LIFETIME_HOURS: '0' })).toThrow(/BOAT_MAX_LIFETIME_HOURS/);
   });
 
+  it('treats empty lifetime settings as unset, as an env file with NAME= gives them', () => {
+    const [e2b] = providersFromEnv({ E2B_API_KEY: 'x', E2B_MAX_LIFETIME_HOURS: '' });
+    expect(e2b?.maxLifetimeSeconds).toBe(3600);
+    const [boat] = providersFromEnv({ BOAT_API_KEY: 'x', BOAT_MAX_LIFETIME_HOURS: ' ' });
+    expect(boat?.maxLifetimeSeconds).toBe(2 * 3600);
+  });
+
   it('gives every size real resources and a positive price on every provider', () => {
     for (const provider of providersFromEnv(all)) {
       for (const size of SIZES) {

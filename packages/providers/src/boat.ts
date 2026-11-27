@@ -55,6 +55,11 @@ const READY_TIMEOUT_MS = 180_000;
 const LIVE_STATES = new Set(['init', 'provisioning', 'provisioned', 'cloning', 'ready', 'idle', 'running']);
 /** Signed file URLs only accept paths under these directories. */
 const URL_ROOTS = ['/home/user', '/tmp'];
+/** How long a signed download URL may take to answer with headers (the body may take longer). */
+const DOWNLOAD_HEADERS_TIMEOUT_MS = 60_000;
+/** States in which one of our sandboxes is past use: listTagged deletes them (best effort). */
+const DEAD_STATES = new Set(['archived', 'error']);
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export interface BoatConfig {
   apiKey: string;
@@ -69,7 +74,11 @@ type NotFoundMeans = 'sandbox' | 'file' | 'other';
 
 export function createBoatProvider(config: BoatConfig): Provider {
   const boat = new BoatApi(
-    new Configuration({ accessToken: config.apiKey, ...(config.baseUrl ? { basePath: config.baseUrl } : {}) }),
+    new Configuration({
+      accessToken: config.apiKey,
+      // The SDK appends paths such as `/sandboxes` verbatim, so a trailing slash would double up.
+      ...(config.baseUrl ? { basePath: config.baseUrl.replace(/\/+$/, '') } : {}),
+    }),
   );
 
   const fail = async (error: unknown, context: string, notFound: NotFoundMeans = 'other'): Promise<never> => {
@@ -108,7 +117,11 @@ export function createBoatProvider(config: BoatConfig): Provider {
    * the command line. `bash -lc` gives the same login-bash semantics as E2B.
    */
   const wrap = (command: string, cwd: string, env: Record<string, string>) => {
-    const assignments = Object.entries(env).map(([key, value]) => `${key}=${shellQuote(value)}`);
+    const assignments = Object.entries(env).map(([key, value]) => {
+      // The name is spliced into the command line unquoted, so it must be a plain identifier.
+      if (!ENV_NAME.test(key)) throw new ProviderError('boat', 'invalid_request', `invalid environment variable name: ${key}`);
+      return `${key}=${shellQuote(value)}`;
+    });
     return `cd ${shellQuote(cwd)} && env ${assignments.join(' ')} bash -lc ${shellQuote(command)}`;
   };
 
@@ -214,10 +227,12 @@ export function createBoatProvider(config: BoatConfig): Provider {
             if (!sandboxId) continue;
             if (LIVE_STATES.has(sandbox.state)) {
               result.push({ providerSandboxId: sandbox.id, sandboxId });
-            } else if (sandbox.state === 'archived') {
+            } else if (DEAD_STATES.has(sandbox.state)) {
               // boat's TTL stops and archives a sandbox instead of deleting it. One of ours that
-              // reached `archived` is past its deadline, so delete it (best effort: a key without
-              // delete scope gets 403, and a deletion in progress may still list as archived).
+              // reached `archived` is past its deadline, and one in `error` can't run commands, so
+              // delete it (best effort: a key without delete scope gets 403, and a deletion in
+              // progress may still list as archived). Neither is listed, so a running row whose
+              // sandbox died is found lost through isAlive.
               void deleteSandbox(sandbox.id).catch(() => {});
             }
           }
@@ -314,7 +329,7 @@ export function createBoatProvider(config: BoatConfig): Provider {
       try {
         if (staged) await stageWithShell(sh, sandboxId, `cp -- ${shellQuote(path)} ${shellQuote(staged)}`, path);
         const { url } = await boat.createDownloadUrl({ sandboxId, fileUrlRequest: { path: staged ?? path } });
-        const response = await fetch(url);
+        const response = await fetchSigned(url, { method: 'GET' }, `download ${path}`, DOWNLOAD_HEADERS_TIMEOUT_MS);
         if (!response.ok || !response.body) {
           await response.body?.cancel();
           throw httpError(response.status, `download ${path}`);
@@ -358,7 +373,8 @@ export function createBoatProvider(config: BoatConfig): Provider {
         const { url } = await boat.createUploadUrl({ sandboxId, fileUrlRequest: { path: staged ?? path } });
         // A streamed body is sent chunked. Confirm in the live smoke test that the signed URL
         // accepts uploads without a Content-Length.
-        const response = await fetch(url, { method: 'PUT', body: data, duplex: 'half' } as RequestInit);
+        // No headers timeout: boat answers only once the whole body is uploaded.
+        const response = await fetchSigned(url, { method: 'PUT', body: data, duplex: 'half' } as RequestInit, `upload ${path}`);
         await response.body?.cancel();
         if (!response.ok) throw httpError(response.status, `upload ${path}`);
         if (staged) {
@@ -366,7 +382,8 @@ export function createBoatProvider(config: BoatConfig): Provider {
           await stageWithShell(
             sh,
             sandboxId,
-            `mkdir -p -- ${shellQuote(dir)} && mv -f -- ${shellQuote(staged)} ${shellQuote(path)}`,
+            // -T: an existing directory at `path` is an error, not a folder to move the file into.
+            `mkdir -p -- ${shellQuote(dir)} && mv -fT -- ${shellQuote(staged)} ${shellQuote(path)}`,
             path,
           );
         }
@@ -450,6 +467,36 @@ async function stageWithShell(
   const detail = result.stderr.trim() || `exit code ${result.exitCode}`;
   const code: ProviderErrorCode = /no such file|not a directory/i.test(detail) ? 'file_not_found' : 'invalid_request';
   throw new ProviderError('boat', code, `boat ${path}: ${detail}`);
+}
+
+/**
+ * Requests a signed file URL. The sandbox serves it itself, so whoever runs code in the sandbox
+ * controls the response: a redirect is refused rather than followed, or a user could point our
+ * server at internal addresses (SSRF) and read the answer back as file content.
+ */
+async function fetchSigned(url: string, init: RequestInit, context: string, headersTimeoutMs?: number): Promise<Response> {
+  let target: URL;
+  try {
+    target = new URL(url);
+  } catch {
+    throw new ProviderError('boat', 'unknown', `boat ${context} failed: invalid signed URL`);
+  }
+  if (target.protocol !== 'https:' && target.protocol !== 'http:') {
+    throw new ProviderError('boat', 'unknown', `boat ${context} failed: unexpected signed URL scheme ${target.protocol}`);
+  }
+  const controller = new AbortController();
+  const timer =
+    headersTimeoutMs === undefined
+      ? undefined
+      : setTimeout(() => controller.abort(new Error('no response from the sandbox')), headersTimeoutMs);
+  try {
+    // The signal stays live for the body; the timer only covers the wait for headers.
+    return await fetch(target, { ...init, redirect: 'error', signal: controller.signal });
+  } catch (error) {
+    throw new ProviderError('boat', 'unavailable', `boat ${context} failed: ${errorMessage(error)}`, { cause: error });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** A failed request to a signed file URL, which the sandbox serves itself. */

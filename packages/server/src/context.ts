@@ -6,8 +6,8 @@ import type { MiddlewareHandler } from 'hono';
 
 /**
  * - `api_key`: an `sr_...` key, for programmatic use. Can manage sandboxes.
- * - `owner`: the account's owner (the dashboard session in Cloud, the admin token
- *   when self-hosted). Can also manage API keys.
+ * - `owner`: the account's owner (the admin token when self-hosted, or a
+ *   session from a custom authenticator). Can also manage API keys.
  */
 export type AuthKind = 'api_key' | 'owner';
 

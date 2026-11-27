@@ -183,7 +183,12 @@ export function createVercelProvider(config: VercelConfig): Provider {
       const sandbox = await connect(ref);
       // Vercel only documents extending (`extendTimeout` adds to the current deadline). Shortening
       // is unverified, so an earlier deadline is left alone: our lifecycle kills the sandbox at it.
-      const target = ref.expiresAt.getTime() + DEADLINE_MARGIN_SECONDS * 1000;
+      // Vercel caps a session at the plan maximum from its start and rejects extensions past it,
+      // so the margin is dropped near that cap. Counted from the session's creation (the earliest
+      // time it reports), which can land a few seconds before ref.expiresAt; nothing later is possible.
+      const session = sandbox.currentSession();
+      const cap = session.createdAt.getTime() + config.maxLifetimeSeconds * 1000;
+      const target = Math.min(ref.expiresAt.getTime() + DEADLINE_MARGIN_SECONDS * 1000, cap);
       const current = sandbox.expiresAt?.getTime();
       if (current !== undefined && current >= target) return;
       // Without a reported deadline, extending from now overshoots, which is harmless.
@@ -230,6 +235,7 @@ export function createVercelProvider(config: VercelConfig): Provider {
       // Ends our own log stream and wait when the command is stopped, even if the kill call fails.
       const local = new AbortController();
       let command: Command | null = null;
+      let exited = false;
       let stopped: 'timeout' | 'abort' | null = null;
       const stop = (reason: 'timeout' | 'abort') => {
         if (stopped) return;
@@ -259,12 +265,18 @@ export function createVercelProvider(config: VercelConfig): Provider {
         }
         try {
           for await (const line of command.logs({ signal: local.signal })) {
-            if (line.stream === 'stdout') await request.onStdout(line.data);
-            else if (line.stream === 'stderr') await request.onStderr(line.data);
+            try {
+              if (line.stream === 'stdout') await request.onStdout(line.data);
+              else if (line.stream === 'stderr') await request.onStderr(line.data);
+            } catch (error) {
+              // The caller's own failure (e.g. its client went away): passed through unwrapped.
+              throw new CallbackError(error);
+            }
           }
           if (stopped) return { exitCode: null, timedOut: stopped === 'timeout' };
           // Confirm in the live smoke test that `wait` long-polls for commands that outlive one HTTP request.
           const finished = await command.wait({ signal: local.signal });
+          exited = true;
           if (stopped) return { exitCode: null, timedOut: stopped === 'timeout' };
           return { exitCode: finished.exitCode, timedOut: false };
         } catch (error) {
@@ -272,8 +284,11 @@ export function createVercelProvider(config: VercelConfig): Provider {
           throw error;
         }
       } catch (error) {
+        if (error instanceof CallbackError) throw error.cause;
         return failOperation(ref, error, 'exec', 'other');
       } finally {
+        // Any other way out (a callback or stream failure) would leave the command running.
+        if (command && !exited && !stopped) void command.kill('SIGKILL').catch(() => {});
         clearTimeout(timer);
         request.signal.removeEventListener('abort', onAbort);
       }
@@ -324,11 +339,12 @@ export function createVercelProvider(config: VercelConfig): Provider {
     async listFiles(ref, path): Promise<FileEntry[]> {
       const sandbox = await connect(ref);
       // fs.readdir gives names and types only, so one find call gets sizes and times too.
+      // -H follows the path itself when it is a symlink to a directory (the -d test above does).
       // NUL separators survive any file name.
       const p = shellQuote(path);
       const script =
         `[ -e ${p} ] || exit ${EXIT_MISSING}; [ -d ${p} ] || exit ${EXIT_NOT_DIR}; ` +
-        `find ${p} -mindepth 1 -maxdepth 1 -printf '%f\\0%y\\0%s\\0%T@\\0'`;
+        `find -H ${p} -mindepth 1 -maxdepth 1 -printf '%f\\0%y\\0%s\\0%T@\\0'`;
       let result: { exitCode: number; stdout: string };
       try {
         result = await run(sandbox, script);
@@ -397,6 +413,13 @@ export function createVercelProvider(config: VercelConfig): Provider {
   };
 }
 
+/** Wraps an error thrown by the caller's output callback so exec rethrows it as is. */
+class CallbackError extends Error {
+  constructor(cause: unknown) {
+    super('exec output callback failed', { cause });
+  }
+}
+
 /** The current session's status, or undefined when the sandbox has no session. */
 function statusOf(sandbox: Sandbox): string | undefined {
   try {
@@ -419,6 +442,12 @@ function toProviderError(error: unknown, context: string, notFound: NotFoundMean
       const status = error.response.status;
       if (status === 404) {
         return notFound === 'sandbox' ? 'sandbox_not_found' : notFound === 'file' ? 'file_not_found' : 'unknown';
+      }
+      // 410 is a stopped session and 422 sandbox_stopping one on its way out (the SDK's own
+      // checks). Not a bad request: failOperation confirms against the control plane.
+      const apiCode = (error.json as { error?: { code?: unknown } } | undefined)?.error?.code;
+      if (status === 410 || (status === 422 && apiCode === 'sandbox_stopping')) {
+        return notFound === 'sandbox' ? 'sandbox_not_found' : 'unavailable';
       }
       // The SDK already retried 429s. The code for an exhausted Hobby quota is unverified;
       // 402 is treated as a limit too (confirm in the live smoke test).

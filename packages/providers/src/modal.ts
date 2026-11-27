@@ -138,6 +138,10 @@ export function createModalProvider(config: ModalConfig): Provider {
     const cached = handles.get(providerSandboxId);
     if (cached) return cached;
     const sandbox = await modal.sandboxes.fromId(providerSandboxId);
+    // A concurrent call may have cached a handle while this one awaited; keep that one so
+    // this handle (and the connection it would open) isn't orphaned.
+    const raced = handles.get(providerSandboxId);
+    if (raced) return raced;
     if (handles.size >= HANDLE_CACHE_MAX) {
       const [oldestId, oldest] = handles.entries().next().value!;
       handles.delete(oldestId);
@@ -189,7 +193,7 @@ export function createModalProvider(config: ModalConfig): Provider {
   };
 
   /** Kills the process group recorded in `pidFile`, waiting briefly for the file if the command is just starting. */
-  const killProcessGroup = async (sandbox: Sandbox, pidFile: string) => {
+  const killProcessGroup = async (providerSandboxId: string, pidFile: string) => {
     const f = shellQuote(pidFile);
     const script = [
       `i=0; while [ ! -s ${f} ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i+1)); done`,
@@ -201,6 +205,9 @@ export function createModalProvider(config: ModalConfig): Provider {
       `rm -f ${f}`,
       'exit 0',
     ].join('\n');
+    // Fetched again rather than reusing the exec's handle: that one may have been evicted from
+    // the cache (and detached) while the command ran, and a detached handle can't exec.
+    const sandbox = await handle(providerSandboxId);
     const killer = await sandbox.exec(['bash', '-c', script], { stdout: 'ignore', stderr: 'ignore' });
     await killer.wait();
   };
@@ -395,7 +402,7 @@ export function createModalProvider(config: ModalConfig): Provider {
         const outcome = await Promise.race([finished, stopped]);
         if (outcome !== 'stopped') return { exitCode: outcome, timedOut: false };
         try {
-          await killProcessGroup(sandbox, pidFile);
+          await killProcessGroup(ref.providerSandboxId, pidFile);
         } catch (error) {
           return failOperation(ref.providerSandboxId, error, 'kill command', 'sandbox');
         }
@@ -412,7 +419,7 @@ export function createModalProvider(config: ModalConfig): Provider {
         return { exitCode: null, timedOut };
       } catch (error) {
         // An output callback failed or the exec broke; don't leave the command running.
-        void killProcessGroup(sandbox, pidFile).catch(() => {});
+        void killProcessGroup(ref.providerSandboxId, pidFile).catch(() => {});
         for (const reader of readers) reader.cancel().catch(() => {});
         return failOperation(ref.providerSandboxId, error, 'exec', 'sandbox');
       } finally {

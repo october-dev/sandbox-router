@@ -35,7 +35,7 @@ export function authenticate(deps: Pick<ServerDeps, 'db' | 'authenticators'>) {
 /** For account management that API keys may not do, such as managing API keys. */
 export const ownerOnly = createMiddleware<AppEnv>(async (c, next) => {
   if (c.get('authKind') !== 'owner') {
-    throw new AppError('forbidden', 'API keys cannot do this. Use the dashboard, or the admin token when self-hosted.');
+    throw new AppError('forbidden', 'API keys cannot do this. Use the owner credential (the admin token when self-hosted).');
   }
   await next();
 });

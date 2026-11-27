@@ -31,8 +31,8 @@ export const END_REASONS = ['killed', 'expired', 'lost', 'create_failed'] as con
 export type EndReason = (typeof END_REASONS)[number];
 
 /**
- * Who sandboxes and API keys belong to. In Cloud, one per dashboard user (`id` is
- * the Supabase Auth user id). Self-hosted deployments have one owner account.
+ * Who sandboxes and API keys belong to. Self-hosted deployments have one owner account;
+ * a multi-user deployment can create one per user (`id` is its own user id).
  * Locking this row serializes reservations for the account (see the lifecycle's
  * locking rules), so billing implementations can rely on it.
  */

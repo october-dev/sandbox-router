@@ -1,7 +1,7 @@
 # Self-hosted Sandbox Router with its own Postgres.
 #
 #   export ADMIN_TOKEN=$(openssl rand -hex 32)
-#   export E2B_API_KEY=...        # and/or DAYTONA_API_KEY
+#   export E2B_API_KEY=...        # and/or any other provider's keys (README.md)
 #   docker compose up -d
 #
 # The API listens on http://localhost:8787 (reference at /docs).
@@ -28,10 +28,30 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/sandboxrouter
       ADMIN_TOKEN: ${ADMIN_TOKEN:?Set ADMIN_TOKEN, e.g. export ADMIN_TOKEN=$(openssl rand -hex 32)}
+      # Providers: any provider without a key is not offered. See README.md for each setting.
       E2B_API_KEY: ${E2B_API_KEY:-}
       E2B_MAX_LIFETIME_HOURS: ${E2B_MAX_LIFETIME_HOURS:-1}
       DAYTONA_API_KEY: ${DAYTONA_API_KEY:-}
-      DAYTONA_TARGET: ${DAYTONA_TARGET:-us}
+      DAYTONA_TARGET: ${DAYTONA_TARGET:-}
+      DAYTONA_VM: ${DAYTONA_VM:-}
+      MODAL_TOKEN_ID: ${MODAL_TOKEN_ID:-}
+      MODAL_TOKEN_SECRET: ${MODAL_TOKEN_SECRET:-}
+      MODAL_ENVIRONMENT: ${MODAL_ENVIRONMENT:-}
+      MODAL_APP_NAME: ${MODAL_APP_NAME:-}
+      MODAL_IMAGE: ${MODAL_IMAGE:-}
+      MODAL_DISABLE_VM: ${MODAL_DISABLE_VM:-}
+      VERCEL_TOKEN: ${VERCEL_TOKEN:-}
+      VERCEL_TEAM_ID: ${VERCEL_TEAM_ID:-}
+      VERCEL_PROJECT_ID: ${VERCEL_PROJECT_ID:-}
+      VERCEL_MAX_LIFETIME_HOURS: ${VERCEL_MAX_LIFETIME_HOURS:-0.75}
+      VERCEL_REGION: ${VERCEL_REGION:-}
+      NOVITA_API_KEY: ${NOVITA_API_KEY:-}
+      NOVITA_MAX_LIFETIME_HOURS: ${NOVITA_MAX_LIFETIME_HOURS:-1}
+      NOVITA_DOMAIN: ${NOVITA_DOMAIN:-}
+      BOAT_API_KEY: ${BOAT_API_KEY:-}
+      BOAT_MAX_LIFETIME_HOURS: ${BOAT_MAX_LIFETIME_HOURS:-2}
+      BOAT_BASE_URL: ${BOAT_BASE_URL:-}
+      MAX_RUNNING_SANDBOXES: ${MAX_RUNNING_SANDBOXES:-10}
     ports:
       # Bound to localhost only. Put a TLS proxy in front before exposing it.
       - "127.0.0.1:8787:8787"

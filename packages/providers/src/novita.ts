@@ -1,5 +1,6 @@
 import {
   AuthenticationError,
+  type CommandHandle,
   CommandExitError,
   FileNotFoundError,
   InvalidArgumentError,
@@ -55,6 +56,10 @@ const HOME_DIR = '/home/user';
  * from its own start; ours is exact). We kill the sandbox at our deadline.
  */
 const DEADLINE_MARGIN_SECONDS = 60;
+/** A file read fails when Novita sends nothing for this long. */
+const STREAM_IDLE_TIMEOUT_MS = 60_000;
+/** Upper bound on one file upload (the server caps uploads at 100 MiB). */
+const WRITE_TIMEOUT_MS = 10 * 60_000;
 
 export interface NovitaConfig {
   apiKey: string;
@@ -162,9 +167,8 @@ export function createNovitaProvider(config: NovitaConfig): Provider {
     async listTagged(): Promise<TaggedSandbox[]> {
       const result: TaggedSandbox[] = [];
       try {
-        // No `state` filter, as in the e2b adapter. Confirm in the live smoke test that the
-        // server default includes paused sandboxes (otherwise pass every SandboxState).
-        const paginator = Sandbox.list({ ...api, limit: 100 });
+        // Ask for paused sandboxes explicitly rather than relying on the server's default filter.
+        const paginator = Sandbox.list({ ...api, limit: 100, query: { state: ['running', 'paused'] } });
         while (paginator.hasNext) {
           for (const info of await paginator.nextItems()) {
             const sandboxId = info.metadata[SANDBOX_ID_LABEL];
@@ -192,21 +196,36 @@ export function createNovitaProvider(config: NovitaConfig): Provider {
       const sandbox = await connect(ref);
       if (request.signal.aborted) return { exitCode: null, timedOut: false };
       try {
+        // novita-sandbox has no `retainOutput` and keeps every byte of output on the handle
+        // for the command's whole life; we clear it after each chunk so a long, chatty command
+        // can't grow our memory without bound. It also calls the callbacks without awaiting
+        // them, so a rejected callback would be an unhandled rejection: swallow it here.
+        let handle: CommandHandle | undefined;
+        const forward = (callback: (chunk: string) => void | Promise<void>) => (chunk: string) => {
+          if (handle) dropRetainedOutput(handle);
+          try {
+            void Promise.resolve(callback(chunk)).catch(() => {});
+          } catch {
+            // A throwing callback must not break the SDK's event loop.
+          }
+        };
         // The SDK runs every command as `/bin/bash -l -c <command>`.
-        const handle = await sandbox.commands.run(request.command, {
+        handle = await sandbox.commands.run(request.command, {
           background: true,
           cwd: request.cwd,
           envs: request.env,
           timeoutMs: request.timeoutMs,
-          onStdout: request.onStdout,
-          onStderr: request.onStderr,
+          onStdout: forward(request.onStdout),
+          onStderr: forward(request.onStderr),
         });
-        const onAbort = () => void handle.kill().catch(() => {});
+        const started = handle;
+        dropRetainedOutput(started);
+        const onAbort = () => void started.kill().catch(() => {});
         request.signal.addEventListener('abort', onAbort, { once: true });
         // The caller may have gone away while the command was starting.
         if (request.signal.aborted) onAbort();
         try {
-          const result = await handle.wait();
+          const result = await started.wait();
           return { exitCode: result.exitCode, timedOut: false };
         } catch (error) {
           if (error instanceof CommandExitError) {
@@ -214,7 +233,11 @@ export function createNovitaProvider(config: NovitaConfig): Provider {
           }
           // novita-sandbox has no SandboxNotRunningError: a sandbox that went away surfaces as
           // a TimeoutError too, so only a command deadline counts as the command timing out.
-          if (error instanceof TimeoutError && isCommandDeadline(error)) return { exitCode: null, timedOut: true };
+          if (error instanceof TimeoutError && isCommandDeadline(error)) {
+            // The deadline is the client stream's; make sure the process doesn't outlive it.
+            await started.kill().catch(() => {});
+            return { exitCode: null, timedOut: true };
+          }
           throw error;
         } finally {
           request.signal.removeEventListener('abort', onAbort);
@@ -243,7 +266,12 @@ export function createNovitaProvider(config: NovitaConfig): Provider {
     async readFile(ref, path) {
       const sandbox = await connect(ref);
       try {
-        return await sandbox.files.read(path, { format: 'stream' });
+        // The SDK puts a total (not idle) request timeout on the whole download, which would
+        // cut off any read that takes longer; we disable it and apply an idle timeout instead.
+        const data: unknown = await sandbox.files.read(path, { format: 'stream', requestTimeoutMs: 0 });
+        // For an empty file the SDK returns '' rather than a stream.
+        if (!(data instanceof ReadableStream)) return new Blob([]).stream();
+        return withIdleTimeout(data as ReadableStream<Uint8Array>, STREAM_IDLE_TIMEOUT_MS, path);
       } catch (error) {
         return fail(error, `read ${path}`);
       }
@@ -253,7 +281,9 @@ export function createNovitaProvider(config: NovitaConfig): Provider {
       const sandbox = await connect(ref);
       try {
         // Creates parent directories and overwrites, as on E2B.
-        await sandbox.files.write(path, data);
+        // The SDK buffers the body, then uploads it under one total request timeout (60s by
+        // default), too short for a large upload on a slow link.
+        await sandbox.files.write(path, data, { requestTimeoutMs: WRITE_TIMEOUT_MS });
       } catch (error) {
         fail(error, `write ${path}`);
       }
@@ -291,6 +321,42 @@ export function createNovitaProvider(config: NovitaConfig): Provider {
       return { url: `https://${sandbox.getHost(port)}`, expiresAt: null };
     },
   };
+}
+
+/** novita-sandbox has no `retainOutput`; clear the output it accumulates on the handle. */
+function dropRetainedOutput(handle: CommandHandle): void {
+  const retained = handle as unknown as { _stdout?: unknown; _stderr?: unknown };
+  if (typeof retained._stdout === 'string') retained._stdout = '';
+  if (typeof retained._stderr === 'string') retained._stderr = '';
+}
+
+/**
+ * Errors the stream when the source produces nothing for `idleMs` while we wait on it. Time
+ * spent waiting on a slow consumer doesn't count, since we only read when asked to.
+ */
+function withIdleTimeout(source: ReadableStream<Uint8Array>, idleMs: number, path: string): ReadableStream<Uint8Array> {
+  const reader = source.getReader();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const idle = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Novita read ${path} stalled for ${idleMs}ms`)), idleMs);
+      });
+      try {
+        const { done, value } = await Promise.race([reader.read(), idle]);
+        if (done) controller.close();
+        else controller.enqueue(value);
+      } catch (error) {
+        void reader.cancel(error).catch(() => {});
+        controller.error(error);
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+    },
+  });
 }
 
 /**

@@ -48,7 +48,7 @@ export interface ExecOptions {
 }
 
 export interface ExecResult {
-  /** Null when the command was killed by its timeout. */
+  /** Null when the command was killed before it exited (its timeout, or an abort). */
   exitCode: number | null;
   timedOut: boolean;
   stdout: string;

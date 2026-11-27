@@ -48,7 +48,7 @@ export function registerSandboxRoutes(app: App, deps: ServerDeps, auth: Middlewa
       summary: 'Create a sandbox',
       description:
         'Places the sandbox on the best provider for the preset, failing over to the next one if creation fails. ' +
-        'On Sandbox Router Cloud, funds for the full timeout are reserved from your balance until the sandbox ends, and you are charged only for the time it runs. Self-hosted deployments record the cost without charging.',
+        'Servers with billing reserve funds for the full timeout until the sandbox ends and charge only for the time it runs. Self-hosted servers record the cost without charging.',
       security,
       middleware: [auth],
       request: body(CreateSandboxBody),

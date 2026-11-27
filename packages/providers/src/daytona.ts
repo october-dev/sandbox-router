@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { posix } from 'node:path';
 import { Readable } from 'node:stream';
 import {
   Daytona,
@@ -100,7 +101,8 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
   const name: ProviderName = sandboxClass === 'linux-vm' ? 'daytona-vm' : 'daytona';
   const snapshots = SNAPSHOTS[sandboxClass];
   /** Both providers share one Daytona organization, so each only claims its own class of sandbox. */
-  const isOurClass = (sandbox: Sandbox) => (sandbox.sandboxClass === 'linux-vm') === (sandboxClass === 'linux-vm');
+  // A missing class is a container (Daytona's default); other classes (e.g. windows) belong to neither provider.
+  const isOurClass = (sandbox: Sandbox) => (sandbox.sandboxClass ?? 'container') === sandboxClass;
   const client = new Daytona({ apiKey: config.apiKey, target: config.target, requestTimeoutMs: 60_000 });
   const cache = new Map<string, { sandbox: Sandbox; at: number }>();
 
@@ -132,7 +134,9 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
    */
   const failOperation = async (providerSandboxId: string, error: unknown, context: string, notFound: NotFoundMeans): Promise<never> => {
     const mapped = toProviderError(name, error, context, notFound);
-    if (mapped.code === 'file_not_found' || mapped.code === 'rate_limited') throw mapped;
+    // Only the daemon's own FILE_NOT_FOUND proves the sandbox is there; a bare 404 (e.g. from the
+    // proxy for a destroyed sandbox) is checked against the control plane like any other failure.
+    if (error instanceof DaytonaFileNotFoundError || mapped.code === 'rate_limited') throw mapped;
     cache.delete(providerSandboxId);
     await get(providerSandboxId); // throws sandbox_not_found if it is gone
     throw mapped;
@@ -258,10 +262,14 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
       const sessionId = `sr-${randomUUID()}`;
       const deadline = Date.now() + request.timeoutMs;
       let stopped: 'timeout' | 'abort' | null = null;
-      // Deleting the session kills its process group, which also ends the log stream.
+      let onStopped = () => {};
+      const stoppedPromise = new Promise<void>((resolve) => (onStopped = resolve));
+      // Deleting the session kills its process group, which should also end the log stream;
+      // we don't rely on that and stop waiting for the stream as soon as we stop.
       const stop = (reason: 'timeout' | 'abort') => {
         if (stopped) return;
         stopped = reason;
+        onStopped();
         void sandbox.process.deleteSession(sessionId).catch(() => {});
       };
       const timer = setTimeout(() => stop('timeout'), request.timeoutMs);
@@ -270,13 +278,22 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
       // Track what has been delivered so output missed by a dropped stream can be sent later.
       let stdoutSent = 0;
       let stderrSent = 0;
+      // The SDK calls these synchronously and can't wait on them, so a rejection is swallowed here
+      // rather than left unhandled (which would crash the process).
+      const deliver = (callback: (chunk: string) => void | Promise<void>, chunk: string) => {
+        try {
+          void Promise.resolve(callback(chunk)).catch(() => {});
+        } catch {
+          // ignore: the consumer's failure must not break the stream
+        }
+      };
       const onStdout = (chunk: string) => {
         stdoutSent += chunk.length;
-        void request.onStdout(chunk);
+        deliver(request.onStdout, chunk);
       };
       const onStderr = (chunk: string) => {
         stderrSent += chunk.length;
-        void request.onStderr(chunk);
+        deliver(request.onStderr, chunk);
       };
       try {
         await sandbox.process.createSession(sessionId);
@@ -286,12 +303,12 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
           command: wrap(request.command, request.cwd, request.env),
           runAsync: true,
         });
-        try {
-          // Resolves when the command exits and the stream closes.
-          await sandbox.process.getSessionCommandLogs(sessionId, cmdId, onStdout, onStderr);
-        } catch (error) {
+        // Resolves when the command exits and the stream closes, or as soon as we stop.
+        const logs = sandbox.process.getSessionCommandLogs(sessionId, cmdId, onStdout, onStderr).catch((error: unknown) => {
           if (!stopped) throw error;
-        }
+        });
+        logs.catch(() => {}); // a rejection after we stopped waiting must not go unhandled
+        await Promise.race([logs, stoppedPromise]);
         // The stream can also close early; wait for the exit code until the deadline.
         let exitCode: number | undefined;
         let closedEarly = false;
@@ -354,6 +371,10 @@ export function createDaytonaProvider(config: DaytonaConfig): Provider {
     async writeFile(ref, path, data) {
       const sandbox = await get(ref.providerSandboxId);
       try {
+        // Uploads are documented by third parties to create parent directories, but the SDK doesn't
+        // promise it, so create the parent first; failures here surface from the upload itself.
+        const parent = posix.dirname(path);
+        if (parent !== '/' && parent !== '.') await sandbox.fs.createFolder(parent, '755').catch(() => {});
         await sandbox.fs.uploadFileStream(data, path);
       } catch (error) {
         await failOperation(ref.providerSandboxId, error, `write ${path}`, 'other');

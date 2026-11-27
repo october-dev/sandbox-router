@@ -146,7 +146,8 @@ export function createE2BProvider(config: E2BConfig): Provider {
     async listTagged(): Promise<TaggedSandbox[]> {
       const result: TaggedSandbox[] = [];
       try {
-        const paginator = Sandbox.list({ ...api, limit: 100 });
+        // Ask for paused sandboxes explicitly rather than relying on the server's default filter.
+        const paginator = Sandbox.list({ ...api, limit: 100, query: { state: ['running', 'paused'] } });
         while (paginator.hasNext) {
           for (const info of await paginator.nextItems()) {
             const sandboxId = info.metadata[SANDBOX_ID_LABEL];
@@ -196,7 +197,11 @@ export function createE2BProvider(config: E2BConfig): Provider {
           }
           // These two extend TimeoutError but mean the sandbox itself is gone or unreachable.
           if (error instanceof SandboxNotRunningError || error instanceof SandboxUnreachableError) throw error;
-          if (error instanceof TimeoutError) return { exitCode: null, timedOut: true };
+          if (error instanceof TimeoutError) {
+            // `timeoutMs` is the client stream's deadline; make sure the process doesn't outlive it.
+            await handle.kill().catch(() => {});
+            return { exitCode: null, timedOut: true };
+          }
           throw error;
         } finally {
           request.signal.removeEventListener('abort', onAbort);
@@ -248,7 +253,8 @@ export function createE2BProvider(config: E2BConfig): Provider {
         return entries.map((entry) => ({
           name: entry.name,
           path: entry.path,
-          type: entry.type === 'dir' ? 'dir' : entry.type === 'symlink' ? 'symlink' : 'file',
+          // Older envd versions report a symlink as its target's type with `symlinkTarget` set.
+          type: entry.type === 'symlink' || entry.symlinkTarget ? 'symlink' : entry.type === 'dir' ? 'dir' : 'file',
           size: entry.size,
           modifiedAt: entry.modifiedTime?.toISOString() ?? null,
         }));

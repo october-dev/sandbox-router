@@ -4,3 +4,4 @@ export type { App, AppEnv, Auth, AuthKind, Authenticator, Principal, ServerDeps 
 export { handleError, toErrorBody } from './errors.ts';
 export { errors, ownerErrors, sandboxErrors, security } from './routes/common.ts';
 export { startTasks, startWorker, type Task } from './worker.ts';
+export { OWNER_ACCOUNT_ID, parseSelfHostedEnv, startSelfHosted, type SelfHostedEnv, type SelfHostedServer } from './self-hosted-server.ts';

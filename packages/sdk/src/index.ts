@@ -41,6 +41,15 @@ export class SandboxRouterError extends Error {
   }
 }
 
+/** HTTP status the API would have used for an error that arrives inside a command stream. */
+const STREAM_ERROR_STATUS: Record<string, number> = {
+  sandbox_not_running: 409,
+  bad_request: 400,
+  not_found: 404,
+  provider_error: 502,
+  internal_error: 500,
+};
+
 type RawBody = NonNullable<RequestInit['body']>;
 type Body = RawBody | object | undefined;
 
@@ -120,7 +129,7 @@ export class SandboxRouter {
     this.sandboxes = new Sandboxes(this.transport);
   }
 
-  /** Your balance and how much is reserved by running sandboxes. Cloud only: self-hosted servers have no balance and return 404. */
+  /** Your balance and how much is reserved by running sandboxes. Only on servers with billing; self-hosted servers have no balance and return 404. */
   account(): Promise<Account> {
     return this.transport.json('GET', '/v1/account');
   }
@@ -199,15 +208,19 @@ export class Sandbox {
     try {
       for (;;) {
         const { done, value } = await reader.read();
-        if (done) return;
+        if (done) {
+          // The server always ends a stream with `exit` or `error`; anything else is a dropped connection.
+          throw new SandboxRouterError(0, 'stream_closed', 'The command stream closed before the command exited');
+        }
         const data = JSON.parse(value.data) as unknown;
         if (value.event === 'stdout' || value.event === 'stderr') {
           yield { type: value.event, data: data as string };
         } else if (value.event === 'exit') {
           yield { type: 'exit', ...(data as { exitCode: number | null; timedOut: boolean; durationMs: number }) };
+          return;
         } else if (value.event === 'error') {
           const error = data as { code: string; message: string };
-          throw new SandboxRouterError(502, error.code, error.message);
+          throw new SandboxRouterError(STREAM_ERROR_STATUS[error.code] ?? 502, error.code, error.message);
         }
       }
     } finally {

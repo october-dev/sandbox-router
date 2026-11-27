@@ -27,7 +27,7 @@ export async function closeTestDb() {
 
 export async function resetDb() {
   await testDb().execute(
-    // Cascades to any tables that reference these, such as Cloud billing tables.
+    // Cascades to any tables that reference these, such as billing tables added by a deployment.
     sql`truncate table create_attempts, sandboxes, api_keys, accounts restart identity cascade`,
   );
 }

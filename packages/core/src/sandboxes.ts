@@ -43,7 +43,7 @@ export interface CreateSandboxInput {
 export interface Deps {
   db: Db;
   providers: readonly Provider[];
-  /** `ledgerBilling` for prepaid Cloud accounts, `noBilling` for self-hosted. */
+  /** `noBilling` for self-hosted deployments, or a prepaid implementation of `Billing`. */
   billing: Billing;
   /** Running sandboxes allowed per account at once. Defaults to MAX_RUNNING_PER_ACCOUNT. */
   maxRunningPerAccount?: number;
@@ -58,6 +58,20 @@ export interface Deps {
  * surfaces as an error instead of a hang.
  */
 const LOCK_TIMEOUT = sql`set local lock_timeout = '10s'`;
+
+/**
+ * Longest the worker waits on one provider call. The worker's tasks never overlap with
+ * themselves, so a provider call that hangs would otherwise stop all settling.
+ */
+export const WORKER_PROVIDER_TIMEOUT_MS = 60_000;
+
+function withTimeout<T>(promise: Promise<T>, what: string, ms = WORKER_PROVIDER_TIMEOUT_MS): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
 
 const FAILURE_LABELS: Record<ProviderErrorCode, string> = {
   rate_limited: 'at capacity or rate limited',
@@ -412,7 +426,9 @@ export function createSandboxService({ db, providers, billing, maxRunningPerAcco
           if (provider) {
             // The provider enforces its own deadline too, so settle even if this kill fails;
             // reconcile() kills anything left behind.
-            await provider.kill(row.providerSandboxId!).catch((e) => console.error(`kill of expired ${id} failed:`, e));
+            await withTimeout(provider.kill(row.providerSandboxId!), `${provider.name} kill`).catch((e) =>
+              console.error(`kill of expired ${id} failed:`, e),
+            );
           } else {
             console.warn(`provider ${row.provider} is not configured; settling expired ${id} without killing it there`);
           }
@@ -452,7 +468,7 @@ export function createSandboxService({ db, providers, billing, maxRunningPerAcco
       const listedAt = Date.now();
       let tagged;
       try {
-        tagged = await provider.listTagged();
+        tagged = await withTimeout(provider.listTagged(), `${provider.name} list`);
       } catch (error) {
         console.error(`reconcile: listing ${provider.name} failed:`, error);
         continue;
@@ -470,7 +486,7 @@ export function createSandboxService({ db, providers, billing, maxRunningPerAcco
         if (ours) continue;
         // Leave very recent rows alone: placement may still be writing its result.
         if (listedAt - row.createdAt.getTime() < graceMs) continue;
-        await provider.kill(t.providerSandboxId).then(
+        await withTimeout(provider.kill(t.providerSandboxId), `${provider.name} kill`).then(
           () => killed++,
           (error) => console.error(`reconcile: killing ${t.providerSandboxId} failed:`, error),
         );
@@ -484,7 +500,7 @@ export function createSandboxService({ db, providers, billing, maxRunningPerAcco
       for (const row of running) {
         if (listed.has(row.providerSandboxId!)) continue;
         if (listedAt - row.billingStartedAt!.getTime() < graceMs) continue;
-        const alive = await provider.isAlive(row.providerSandboxId!).catch((error) => {
+        const alive = await withTimeout(provider.isAlive(row.providerSandboxId!), `${provider.name} status`).catch((error) => {
           console.error(`reconcile: checking ${row.id} failed:`, error);
           return true;
         });

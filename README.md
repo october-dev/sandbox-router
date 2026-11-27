@@ -96,7 +96,9 @@ cp .env.example .env          # set DATABASE_URL, ADMIN_TOKEN and a provider key
 pnpm dev
 ```
 
-The server runs its own database migrations on start. The API is at `http://localhost:8787`, with a full reference at `/docs`.
+The server runs its own database migrations on start. The API is at `http://localhost:8787`, with a full reference at `/docs` and the OpenAPI document at `/openapi.json`. `GET /healthz` checks the database.
+
+Docker Compose publishes the port on `127.0.0.1` only. To reach the server from elsewhere, put a TLS proxy in front of it.
 
 ## First steps
 
@@ -141,6 +143,7 @@ curl -X POST localhost:8787/v1/sandboxes/<id>/exec \
 | `DATABASE_URL` | Postgres connection string. Required |
 | `ADMIN_TOKEN` | At least 32 characters. Required |
 | `PORT` | Default `8787` |
+| `HOST` | Address to listen on. Default all interfaces |
 | `MAX_RUNNING_SANDBOXES` | Sandboxes allowed at once, default `10` |
 
 Provider settings, all optional except the keys:

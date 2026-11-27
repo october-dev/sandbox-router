@@ -1,8 +1,11 @@
 # sandboxrouter
 
-TypeScript client for [Sandbox Router](https://github.com/october-dev/sandbox-router): one API for cloud sandboxes on E2B and Daytona.
+TypeScript client for [Sandbox Router](https://github.com/october-dev/sandbox-router): one API for cloud
+sandboxes on E2B, Daytona, Modal, Vercel Sandbox, Novita and boat. You point it at a Sandbox Router server,
+for example one you [run yourself](https://github.com/october-dev/sandbox-router#run-it). The server holds
+the provider keys and picks the provider.
 
-Not on npm yet. For now, use it from this repository (`packages/sdk`).
+> Not on npm yet. Until it is, use it from this repository (`packages/sdk`).
 
 ```ts
 import { SandboxRouter } from "sandboxrouter"
@@ -22,21 +25,42 @@ for await (const event of sandbox.execStream("npm test", { cwd: "app", timeout: 
 
 await sandbox.files.write("app/main.py", "print('hello')")
 console.log(await sandbox.files.readText("app/main.py"))
+console.log(await sandbox.files.list("app"))
 
 await sandbox.startBackground("python3 -m http.server 8000")
 console.log((await sandbox.portUrl(8000)).url)
 
-await sandbox.setTimeout(1800) // kill 30 minutes from now instead
+await sandbox.setTimeout(1800) // kill it 30 minutes from now instead
 const final = await sandbox.kill()
 console.log(`cost: $${final.costUsd}`)
 ```
 
-There is no default server: pass `baseUrl` or set `SANDBOXROUTER_BASE_URL`, so your API key only goes where you chose.
+There is no default server: pass `baseUrl` or set `SANDBOXROUTER_BASE_URL`, so your API key only goes
+where you chose.
 
-Sizes: `small` (1 vCPU, 1 GiB), `medium` (2 vCPU, 4 GiB), `large` (4 vCPU, 8 GiB).
-Presets: `cheap` (lowest price) or `fast` (lowest recent create time), or pin `provider: "e2b" | "daytona"`.
+## API
 
-Errors are thrown as `SandboxRouterError` with `status` and a stable `code`
-(`sandbox_not_running`, `file_not_found`, `limit_exceeded`, …).
+| | |
+| --- | --- |
+| `router.sandboxes.create(options)` | `size` (`small`, `medium`, `large`), `preset` (`cheap` or `fast`), `timeout` in seconds (60 to 86400), and optionally `provider` to pin one and `metadata` |
+| `router.sandboxes.get(id)`, `router.sandboxes.list({ status, limit, before })` | Look sandboxes up. `list` returns one page and a `nextCursor` |
+| `router.providers()` | The configured providers, their price per size and recent create speed |
+| `sandbox.exec(command, { cwd, env, timeout, signal })` | Runs the command with `bash -lc` and resolves when it exits |
+| `sandbox.execStream(command, options)` | Yields `stdout` and `stderr` events as they happen, then an `exit` event. Breaking out of the loop or aborting `signal` kills the command |
+| `sandbox.startBackground(command, { cwd, env })` | Starts a command and returns at once |
+| `sandbox.files.read`, `readText`, `write`, `list`, `remove` | Paths are absolute or relative to the sandbox's home directory. `write` takes a string, bytes, a `Blob` or a stream, up to 100 MiB |
+| `sandbox.portUrl(port)` | A public HTTPS URL for a port inside the sandbox |
+| `sandbox.setTimeout(seconds)`, `sandbox.kill()`, `sandbox.refresh()` | Each updates `sandbox.data`, which holds the latest state, price and cost |
 
-Requires Node 20+ (or any runtime with `fetch` and web streams).
+Sizes: `small` (1 vCPU, 1 GiB), `medium` (2 vCPU, 4 GiB), `large` (4 vCPU, 8 GiB). Where a provider has no
+exact match, the sandbox gets the nearest larger machine, and `sandbox.data` reports what it actually got.
+
+Errors are thrown as `SandboxRouterError`, with the HTTP `status` and a stable `code` such as
+`bad_request`, `unauthorized`, `not_found`, `limit_exceeded`, `sandbox_not_running`, `file_not_found`,
+`payload_too_large`, `no_provider` or `provider_error`.
+
+Requires Node 22.12 or later, or another runtime with `fetch` and web streams.
+
+## License
+
+[Apache 2.0](LICENSE)
