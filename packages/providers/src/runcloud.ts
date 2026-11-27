@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Client, RunCloudError, type Sandbox, type SandboxTunnel } from '@run-cloud/sdk';
 import { ProviderError, type ProviderErrorCode, errorMessage } from './errors.ts';
 import { type PriceSheet, ratePerHour } from './pricing.ts';
-import { shellQuote } from './shell.ts';
+import { notAnOption, shellQuote } from './shell.ts';
 import {
   SANDBOX_ID_LABEL,
   SIZE_SPECS,
@@ -230,12 +230,26 @@ export function createRunCloudProvider(config: RunCloudConfig): Provider {
       ];
 
       const stream = new AbortController();
+      let killed = false;
+      const killOnce = () => {
+        if (killed) return;
+        killed = true;
+        void killCommand(id, token);
+      };
       let stopped: 'timeout' | 'abort' | null = null;
       const stop = (reason: 'timeout' | 'abort') => {
-        if (stopped) return;
+        if (stopped || failure !== undefined) return;
         stopped = reason;
         stream.abort();
-        void killCommand(id, token);
+        killOnce();
+      };
+      /** An output callback threw: stop the command, which nobody is reading any more. */
+      let failure: unknown;
+      const halt = (error: unknown) => {
+        if (stopped || failure !== undefined) return;
+        failure = error;
+        stream.abort();
+        killOnce();
       };
       const timer = setTimeout(() => stop('timeout'), request.timeoutMs);
       const onAbort = () => stop('abort');
@@ -243,10 +257,11 @@ export function createRunCloudProvider(config: RunCloudConfig): Provider {
 
       // The SDK's callbacks are synchronous, so output is handed on in order through a chain.
       let delivered: Promise<void> = Promise.resolve();
-      const forward = (decoder: TextDecoder, sink: (chunk: string) => void | Promise<void>) => (chunk: Uint8Array) => {
-        const text = decoder.decode(chunk, { stream: true });
-        if (text) delivered = delivered.then(() => sink(text));
+      const deliver = (sink: (chunk: string) => void | Promise<void>, text: string) => {
+        if (text && failure === undefined) delivered = delivered.then(() => sink(text)).catch(halt);
       };
+      const forward = (decoder: TextDecoder, sink: (chunk: string) => void | Promise<void>) => (chunk: Uint8Array) =>
+        deliver(sink, decoder.decode(chunk, { stream: true }));
       const stdout = new TextDecoder();
       const stderr = new TextDecoder();
       try {
@@ -259,19 +274,19 @@ export function createRunCloudProvider(config: RunCloudConfig): Provider {
           onStdout: forward(stdout, request.onStdout),
           onStderr: forward(stderr, request.onStderr),
         });
-        const restOut = stdout.decode();
-        const restErr = stderr.decode();
-        if (restOut) delivered = delivered.then(() => request.onStdout(restOut));
-        if (restErr) delivered = delivered.then(() => request.onStderr(restErr));
+        deliver(request.onStdout, stdout.decode());
+        deliver(request.onStderr, stderr.decode());
         await delivered;
+        if (failure !== undefined) return fail(failure, 'exec');
         if (stopped) return { exitCode: null, timedOut: stopped === 'timeout' };
         return { exitCode: result.exitCode, timedOut: false };
       } catch (error) {
-        if (stopped) {
-          await delivered.catch(() => {});
-          return { exitCode: null, timedOut: stopped === 'timeout' };
-        }
-        return fail(error, 'exec');
+        await delivered;
+        if (stopped) return { exitCode: null, timedOut: stopped === 'timeout' };
+        // The output stream broke (or a callback threw): the command may still be running, with
+        // nobody left to read it or stop it at its deadline.
+        killOnce();
+        return fail(failure ?? error, 'exec');
       } finally {
         clearTimeout(timer);
         request.signal.removeEventListener('abort', onAbort);
@@ -324,7 +339,9 @@ export function createRunCloudProvider(config: RunCloudConfig): Provider {
         ref.providerSandboxId,
         path,
         `[ -e ${quoted} ] || exit ${EXIT_NOT_FOUND}; [ -d ${quoted} ] || exit ${EXIT_NOT_A_DIRECTORY}; ` +
-          `find ${quoted} -mindepth 1 -maxdepth 1 -printf '%f\\0%y\\0%s\\0%T@\\0'`,
+          // find has no `--`: a relative path starting with `-` would read as an expression.
+          // -H lists the directory a symlinked path points to.
+          `find -H ${shellQuote(notAnOption(path))} -mindepth 1 -maxdepth 1 -printf '%f\\0%y\\0%s\\0%T@\\0'`,
         `list ${path}`,
       );
       const fields = stdout.split('\0');
