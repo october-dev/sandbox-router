@@ -48,7 +48,7 @@ where you chose.
 | `sandbox.exec(command, { cwd, env, timeout, signal })` | Runs the command with `bash -lc` and resolves when it exits |
 | `sandbox.execStream(command, options)` | Yields `stdout` and `stderr` events as they happen, then an `exit` event. Breaking out of the loop or aborting `signal` kills the command |
 | `sandbox.startBackground(command, { cwd, env })` | Starts a command and returns at once |
-| `sandbox.files.read`, `readText`, `write`, `list`, `remove` | Paths are absolute or relative to the sandbox's home directory. `write` takes a string, bytes, a `Blob` or a stream, up to 100 MiB |
+| `sandbox.files.read`, `readText`, `readStream`, `write`, `list`, `remove` | Paths are absolute or relative to the sandbox's home directory. `readStream` returns a `ReadableStream` instead of buffering. `write` takes a string, bytes, a `Blob` or a stream, up to 100 MiB |
 | `sandbox.portUrl(port)` | A public HTTPS URL for a port inside the sandbox |
 | `sandbox.setTimeout(seconds)`, `sandbox.kill()`, `sandbox.refresh()` | Each updates `sandbox.data`, which holds the latest state, price and cost |
 

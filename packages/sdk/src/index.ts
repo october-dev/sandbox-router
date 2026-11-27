@@ -302,6 +302,12 @@ export class Files {
     return new Uint8Array(await response.arrayBuffer());
   }
 
+  /** Like `read`, but returns the content as it arrives instead of buffering it. */
+  async readStream(path: string, options: { signal?: AbortSignal } = {}): Promise<ReadableStream<Uint8Array>> {
+    const response = await this.transport.request('GET', `${this.base}/files/content`, { query: { path }, signal: options.signal });
+    return response.body ?? new Response(new Uint8Array()).body!;
+  }
+
   async readText(path: string): Promise<string> {
     return new TextDecoder().decode(await this.read(path));
   }
