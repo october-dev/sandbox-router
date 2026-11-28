@@ -11,6 +11,7 @@ const all = {
   MODAL_TOKEN_SECRET: 'as-fake',
   NOVITA_API_KEY: 'sk_fake',
   BOAT_API_KEY: 'boat_fake',
+  RUN_CLOUD_API_KEY: 'rc_fake',
   VERCEL_TOKEN: 'vercel_fake',
   VERCEL_TEAM_ID: 'team_fake',
   VERCEL_PROJECT_ID: 'prj_fake',
