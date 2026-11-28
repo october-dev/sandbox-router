@@ -86,8 +86,8 @@ importers:
         specifier: 0.227.3
         version: 0.227.3
       '@run-cloud/sdk':
-        specifier: 0.69.0
-        version: 0.69.0
+        specifier: 0.71.0
+        version: 0.71.0
       '@vercel/sandbox':
         specifier: 3.9.1
         version: 3.9.1
@@ -1185,8 +1185,8 @@ packages:
   '@rolldown/pluginutils@1.1.0':
     resolution: {integrity: sha512-K+NU2HDCEem4sClgHH4ZZXwdJeNFkJo+hRk479DIwdIviAPN2hFJH1KHHwg8CxHQXvi0M5XY4deTXINfIiSG6w==}
 
-  '@run-cloud/sdk@0.69.0':
-    resolution: {integrity: sha512-LPkQtMDBn3Oh2tJLuF0cdl8pEBf+8MVqwU9055947/jzn747TpP2GtBO0dBtJ81a8W9/ZSDmFKXn9X/Nj24ilA==}
+  '@run-cloud/sdk@0.71.0':
+    resolution: {integrity: sha512-W9LScI5L1MFZkuEQP8khlr6fPS5ROHMdnf0KkQ02nfiLXfWUGwMR9Nho4m4qLSD9o4HKcrCAM7CMr9P4FlGEMA==}
     engines: {node: '>=20'}
 
   '@scalar/client-side-rendering@0.4.18':
@@ -3306,7 +3306,7 @@ snapshots:
 
   '@rolldown/pluginutils@1.1.0': {}
 
-  '@run-cloud/sdk@0.69.0':
+  '@run-cloud/sdk@0.71.0':
     dependencies:
       '@opentelemetry/api': 1.10.0
       '@types/ws': 8.18.2

@@ -265,7 +265,7 @@ export function createRunCloudProvider(config: RunCloudConfig): Provider {
       const stdout = new TextDecoder();
       const stderr = new TextDecoder();
       try {
-        // The SDK also keeps the whole output in memory until the command ends.
+        // Output only streams to the callbacks; the SDK does not also keep a copy of it.
         const result = await cloud.sandboxes.exec(id, argv, {
           cwd: request.cwd,
           env: request.env,
@@ -273,6 +273,7 @@ export function createRunCloudProvider(config: RunCloudConfig): Provider {
           signal: stream.signal,
           onStdout: forward(stdout, request.onStdout),
           onStderr: forward(stderr, request.onStderr),
+          bufferOutput: false,
         });
         deliver(request.onStdout, stdout.decode());
         deliver(request.onStderr, stderr.decode());
